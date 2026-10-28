@@ -1,7 +1,7 @@
 ;; The language of a web page's program: Substrate, ui.sub's views, and app: model, messages, update, view.
 (require-unqualified ui "ui.sub")
-(require-unqualified events "../../host/events.sub")
-(require-unqualified dom "../../host/web/dom.sub")
+(require-unqualified events host/events)
+(require-unqualified dom host/web/dom)
 
 (provide (all-from-out ui) (all-from-out events) (all-from-out dom) app send! flush! prevent-default!)
 
@@ -26,7 +26,7 @@
 (define (prevent-default!) (dom-prevent-default))
 
 (begin-for-syntax
-  (require-unqualified macros "../../compiler/macros.sub")
+  (require-unqualified macros compiler/macros)
 
   ;; A view's name is bound to (ui-view (state mount update unmount) parameters).
   (define (app-form [s datum]) -> datum
