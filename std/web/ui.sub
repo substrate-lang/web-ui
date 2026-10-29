@@ -1,5 +1,5 @@
 ;; Views: a small language for describing web pages, compiled to patches.
-(require-unqualified events "../../host/events.sub")
+(require-unqualified events host/events)
 
 (provide view messages
          ui-patches ui-patches-done! ui-frame-alloc
@@ -281,8 +281,8 @@
 ;; ---- the `view` macro ----
 
 (begin-for-syntax
-  (require-unqualified macros "../../compiler/macros.sub")
-  (require-unqualified meta "../meta/type-info.sub")
+  (require-unqualified macros compiler/macros)
+  (require-unqualified meta std/meta/type-info)
 
   (struct block [html buffer] [nodes u32] [fields datum] [mount datum] [update datum] [unmount datum]
           [state datum] [template datum] [unmounter datum])
