@@ -52,3 +52,4 @@
   (set! (-> the-model lock) 0)
   (screen.update (& a-screen) (& the-model))
   (trace-patches!))
+
