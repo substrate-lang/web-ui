@@ -1,4 +1,5 @@
 ;; Canvas drawing and window listeners: the patches a view writes, printed.
+(require-unqualified tests std/test/test)
 (require-unqualified ui web/ui)
 (require-unqualified canvas web/canvas)
 (require-unqualified trace web/trace)
@@ -102,3 +103,5 @@
 
   (set! (-> the-model show) #f)
   (step "the canvas is removed"))
+
+(test canvas (expect-output-file "canvas.out" (main)))
