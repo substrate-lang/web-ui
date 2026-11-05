@@ -400,21 +400,21 @@ stop \"/assets/beep.wav\"")))
     (buffer-string (& out))))
 
 (test session-scheme
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../build/compiler"))
+  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/scheme/tests/session/scheme.sub" "-d"
                                      "/src/packages/scheme/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
     (expect-output-file "../../scheme/tests/session/scheme.out" (printf "~a~n" (without-backtraces (browser-console b))))))
 
 (test session-switch
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../build/compiler"))
+  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/scheme/tests/session/switch.sub" "-d"
                                      "/src/packages/scheme/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
     (expect-output-file "../../scheme/tests/session/switch.out" (printf "~a~n" (without-backtraces (browser-console b))))))
 
 (test session-bend
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../build/compiler"))
+  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/bend/tests/session/bend.sub" "-d"
                                      "/src/packages/bend/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
