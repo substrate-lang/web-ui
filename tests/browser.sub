@@ -128,7 +128,7 @@
   (browser-press! b "Enter")
   (idle b))
 
-(test repl #:grants ((read "../scheme" "../bend" "../nodes"))
+(test repl #:grants ((read "../scheme" "../nodes"))
   (with-browser (b "repl")
     (idle b)
     (expect-text b (within (entry 1) (by-css ".input")) "(language scheme)")
@@ -158,7 +158,7 @@
     (idle b)
     (expect-text b (output 9) "27")))
 
-(test repl-stop #:grants ((read "../scheme" "../bend" "../nodes"))
+(test repl-stop #:grants ((read "../scheme" "../nodes"))
   (with-browser (b "repl")
     (idle b)
     (said b "(define (sq x) (* x x x))")
@@ -183,7 +183,7 @@
     (idle b)
     (expect-count b (within (entry 5) (by-text-containing "Stopped.")) 1)))
 
-(test repl-substrate #:grants ((read "../scheme" "../bend" "../nodes"))
+(test repl-substrate #:grants ((read "../scheme" "../nodes"))
   (with-browser (b "repl")
     (idle b)
     (browser-click! b (by-role "button" "Substrate"))
@@ -217,7 +217,7 @@
     (idle b)
     (expect-text b (within (entry 1) (by-css ".input")) "(language compiler/substrate)")))
 
-(test repl-files #:grants ((read "../scheme" "../bend" "../nodes"))
+(test repl-files #:grants ((read "../scheme" "../nodes"))
   (with-browser (b "repl" #:url "?language=substrate")
     (idle b)
     (said b "(define (sq [x i32]) -> i32 (* x x))")
@@ -400,22 +400,22 @@ stop \"/assets/beep.wav\"")))
     (buffer-string (& out))))
 
 (test session-scheme
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
+  #:grants ((read "../scheme" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/scheme/tests/session/scheme.sub" "-d"
                                      "/src/packages/scheme/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
     (expect-output-file "../../scheme/tests/session/scheme.out" (printf "~a~n" (without-backtraces (browser-console b))))))
 
 (test session-switch
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
+  #:grants ((read "../scheme" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/scheme/tests/session/switch.sub" "-d"
                                      "/src/packages/scheme/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
     (expect-output-file "../../scheme/tests/session/switch.out" (printf "~a~n" (without-backtraces (browser-console b))))))
 
 (test session-bend
-  #:grants ((read "../scheme" "../bend" "../nodes" "../../substrate/build/compiler"))
+  #:grants ((read "../scheme" "../nodes" "../../substrate/build/compiler"))
   (with-browser (b "session" #:args ("/src/substrate" "eval" "/src/packages/bend/tests/session/bend.sub" "-d"
                                      "/src/packages/bend/tests/session" "-c" "/cache" "-m"
                                      "/src/packages/web/tests/session.map"))
-    (expect-output-file "../../bend/tests/session/bend.out" (printf "~a~n" (without-backtraces (browser-console b))))))
+    (expect-output-file "../repl/bend/tests/session/bend.out" (printf "~a~n" (without-backtraces (browser-console b))))))
