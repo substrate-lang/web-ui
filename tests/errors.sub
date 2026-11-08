@@ -26,6 +26,6 @@
 (test err-shade-swizzle (expect-compile-error "fail/err-shade-swizzle.sub" "error: shade: vec2 has no z"))
 (test err-shade-unknown-variable (expect-compile-error "fail/err-shade-unknown-variable.sub" "error: shade: unknown variable q"))
 (test err-shade-wrong-type (expect-compile-error "fail/err-shade-wrong-type.sub" "error: shade: expected f32, got vec3"))
-(test err-store-kind (expect-compile-error "fail/err-store-kind.sub" "err-store-kind.sub:11:29: error: expected (handle enemy), got (handle coin)"))
+(test err-store-kind (expect-compile-error "fail/err-store-kind.sub" "err-store-kind.sub:13:29: error: expected enemy-handle, got coin-handle"))
 (test err-truth (expect-compile-error "fail/err-truth.sub" "err-truth.sub:10:7: error: view: hidden is a boolean attribute: write [hidden], or [hidden e] where e is a condition"))
 (test err-window-event (expect-compile-error "fail/err-window-event.sub" "err-window-event.sub:10:23: error: view: unknown event keydwn (to listen for an event that the DOM does not define, write its name as a string: [on-window \"keydwn\" message])"))

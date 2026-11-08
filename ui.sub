@@ -5,7 +5,7 @@
 
 (provide view messages
          ui-text-set! ui-text-slot! ui-attr-set! ui-attr-slot! ui-int-set! ui-int-slot! ui-truth-set! ui-truth-slot!
-         ui-number-set! ui-number-slot! ui-effect-slot! ui-pointer-lock-slot! ui-listener ui-event-source! ui-event-text
+         ui-number-set! ui-number-slot! ui-effect-slot! ui-pointer-lock-slot! ui-event-source! ui-event-text
          ui-event-truth ui-event-number ui-heard ui-deliver! ui-send
          ui-row ui-rows ui-each! ui-each-clear!)
 
@@ -78,7 +78,6 @@
 
 ;; ---- run-time support: event listeners ----
 
-(struct #:forall (M) ui-listener [handle handler] [fill (fn ((ptr void)))] [message M])
 (struct listener-head [handle handler] [fill (fn ((ptr void)))])
 
 (define delivery (fn ((ptr void))) 0)
@@ -231,6 +230,7 @@
 
   (define view-name datum 0)
   (define message-type datum 0)
+  (define listener-type datum 0)
   (define blocks u32 0)
   (define fields u32 0)
   (define fills datum 0)
@@ -480,7 +480,7 @@
     (unless (== (length al) 3) (fail a (if window '"expected [on-window event message]" '"expected [on event message]")))
     (when (== message-type 0) (fail a '"a listener needs a message type: add (messages TYPE) to this module, before the view"))
     (let* ([event (syntax-e (cadr al))] [m (caddr al)] [filled (event-fill m)]
-           [slot (field! b #`(ui-listener #,message-type))] [at (marked! b node)])
+           [slot (field! b listener-type)] [at (marked! b node)])
       (when (and (not window) (symbol? event) (!= (memq event window-events) 0))
         (fail (cadr al) (format "~a is an event of the window, not of an element: write [on-window ~a message]" `(,event ,event))))
       (unless (or (string? event)
@@ -649,9 +649,15 @@
 
   (define (message-type-name [s datum]) -> datum (datum->syntax s 'ui-message-type s))
 
+  ;; A listener's state: listener-head's fields, then the message.
+  (define (listener-type-name [s datum]) -> datum (datum->syntax s 'ui-message-listener s))
+
   (define (messages-form [s datum]) -> datum
     (syntax-match s
-      [(_ (? identifier? m)) #`(define-syntax #,(message-type-name s) (quote-syntax #,m))]))
+      [(_ (? identifier? m))
+       #`(begin
+           (define-syntax #,(message-type-name s) (quote-syntax #,m))
+           (struct #,(listener-type-name s) [handle handler] [fill (fn ((ptr void)))] [message #,m]))]))
 
   (define (view-form [s datum]) -> datum
     (syntax-match s
@@ -659,6 +665,7 @@
        (let ([declared (message-type-name s)])
          (set! view-name v)
          (set! message-type (if (== (identifier-binding-kind declared) 'compile-time-value) (syntax-local-value declared) 0))
+         (set! listener-type (listener-type-name s))
          (set! blocks 0)
          (set! fields 0)
          (set! fills nil)

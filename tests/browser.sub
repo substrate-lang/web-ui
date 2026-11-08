@@ -380,7 +380,7 @@ stop \"/assets/beep.wav\"")))
     (browser-advance! b 1000)
     (expect-text b (by-css ".game-stopped p") "The game has stopped.")
     (expect-count b (by-text-containing "trap: vector-at: there is no item 5: the vector holds 1") 1)
-    (expect-count b (by-text-containing "at step! web/tests/pages/stopped.sub:13:") 1)
+    (expect-count b (by-text-containing "at step! web/tests/pages/stopped.sub:15:") 1)
     (expect-equal (browser-drawing b (by-css "canvas")) "fill-style \"#2e7d32ff\"\nfill-rect 0 0 64 36")
     (expect-equal (browser-console b) "")))
 
