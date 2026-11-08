@@ -16,7 +16,7 @@
 
 (define (label) -> string
   (let* ([a (@ adjectives (random 8))] [b (@ nouns (random 8))] [n (-> a length)] [m (-> b length)]
-         [p (cast (ptr u8) (malloc (+ n m 1)))])
+         [p (-> (new 0 u8 (+ n m 1)) items)])
     (memcpy p (-> a bytes) n)
     (set! (@ p n) 32)
     (memcpy (+ p n 1) (-> b bytes) m)
@@ -51,7 +51,7 @@
     [append (add-rows! m 1000)]
     [update-some
      (for ([i u32 0]) (< i (-> m count)) (+= i 10)
-       (let* ([r (+ (-> m rows) i)] [n (-> r label length)] [p (cast (ptr u8) (malloc (+ n 4)))])
+       (let* ([r (+ (-> m rows) i)] [n (-> r label length)] [p (-> (new 0 u8 (+ n 4)) items)])
          (memcpy p (-> r label bytes) n)
          (memcpy (+ p n) " !!!" 4)
          (free (-> r label bytes))

@@ -142,11 +142,11 @@
       (+= p 1))
     (when (and (== p m) (== p n)) (return))
     (while (and (< s (- m p)) (< s (- n p)) (== (-> (+ old (- m 1 s)) key) (key-of (- n 1 s)))) (+= s 1))
-    (let* ([rows (cast (ptr ui-row) (malloc (* (+ n 1) (sizeof ui-row))))]
+    (let* ([rows (-> (new 0 ui-row (+ n 1)) items)]
            [middle (- m p s)] [between (- n p s)]
-           [used (cast (ptr u8) (calloc (+ middle 1) 1))]
-           [from (cast (ptr i32) (malloc (* 4 (+ between 1))))]
-           [stays (cast (ptr u8) (calloc (+ between 1) 1))]
+           [used (-> (new 0 u8 (+ middle 1)) items)]
+           [from (-> (new 0 i32 (+ between 1)) items)]
+           [stays (-> (new 0 u8 (+ between 1)) items)]
            [index hash-table])
       (memset (& index) 0 (sizeof hash-table))
       (memcpy rows old (* p (sizeof ui-row)))
@@ -192,7 +192,7 @@
       (set! (-> b count) n))))
 
 (define (longest-rising [xs (slice i32)] [stays (slice u8)])
-  (let* ([n (-> xs length)] [ends (cast (ptr u32) (malloc (* 4 (+ n 1))))] [before (cast (ptr i32) (malloc (* 4 (+ n 1))))]
+  (let* ([n (-> xs length)] [ends (-> (new 0 u32 (+ n 1)) items)] [before (-> (new 0 i32 (+ n 1)) items)]
          [length u32 0])
     (for ([i u32 0]) (< i n) (+= i 1)
       (when (>= (@ xs i) 0)
