@@ -1,0 +1,10 @@
+;; (event-number deltaY) names the event's property without quotes.
+(require-unqualified web-ui/ui)
+
+(struct model [count i32])
+(variant msg [turned [dy f64]])
+(messages msg)
+
+(view (page [m (ptr model)])
+  (div ([on wheel (turned (event-number deltaY))])))
+(define (main) 0)

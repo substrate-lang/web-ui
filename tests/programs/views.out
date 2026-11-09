@@ -12,14 +12,14 @@ attr #7 value="Counter"
 count 5
 unattr #3 disabled
 text #5 "5"
-focus #7
+call #7 focus
 --
 count -1, another title
 text #2 "Counting"
 attr #4 class="neg"
 text #5 "-1"
 attr #7 value="Counting"
-focus #7
+call #7 focus
 --
 nothing changed
 --

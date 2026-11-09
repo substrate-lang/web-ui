@@ -4,7 +4,9 @@
 (provide main)
 
 (struct model [id u32] [busy bool] [wide u32] [note string])
-(variant msg [typed [text string]] [key [id u32] [name string] [shift bool] [meta bool]] [checked [on bool]] [plain])
+(variant msg
+  [typed [text string]] [key [id u32] [name string] [shift bool] [meta bool]] [checked [on bool]] [plain]
+  [turned [dy f64] [mode string]])
 (messages msg)
 
 (view (form [m (ptr model)])
@@ -13,7 +15,8 @@
           [on keydown (key (-> m id) (event key) (event shift) (event meta))]))
   (input ([type "checkbox"] [checked (not (-> m busy))] [on change (checked (event checked))]))
   (table (tr (td ([colspan (+ (-> m wide) 1)] [data-note (-> m note)] ["x-own" "kept"]) "cell")))
-  (my-element ([anything "at all"] [on "my-event" plain]) "own"))
+  (my-element ([anything "at all"] [on "my-event" plain]) "own")
+  (div ([on wheel (turned (event-number "deltaY") (event-text "type"))])))
 
 (define the-model model)
 (define a-form form.state)
@@ -21,9 +24,13 @@
 (define the-value string "")
 (define the-key string "")
 (define the-truths u32 0)
-(define (event-text [which u32]) -> string (if (== which 0) the-value the-key))
-(define (event-truths) -> u32 the-truths)
-(define (event-number [which u32]) -> f64 0.0)
+(define (event-text [node u32] [path string]) -> string
+  (cond [(== path "target.value") the-value] [(== path "key") the-key] [(== path "type") "wheel"] [else ""]))
+(define (truth [bit u32]) -> f64 (if (!= (bit-and the-truths bit) 0) 1.0 0.0))
+(define (event-number [node u32] [path string]) -> f64
+  (cond [(== path "shiftKey") (truth 1)] [(== path "metaKey") (truth 8)] [(== path "target.checked") (truth 16)]
+        [(== path "deltaY") -120.0] [else 0.0]))
+(define (node-is [node u32] [name string]) -> bool #f)
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
@@ -31,7 +38,8 @@
     [(key id name shift meta)
      (printf "key ~a ~a~a~a" id name (if shift " shift" "") (if meta " meta" ""))]
     [(checked on) (printf "~a" (if on "checked" "not checked"))]
-    [plain (printf "plain")])
+    [plain (printf "plain")]
+    [(turned dy mode) (printf "turned ~a by ~a" mode (cast i32 dy))])
   (printf "\n"))
 
 (define (main)
@@ -46,7 +54,7 @@
   (printf "events with no source\n")
   (hear 0)
   (hear 1)
-  (ui-event-source! event-text event-truths event-number)
+  (ui-read-with! event-text event-number node-is)
   (printf "events\n")
   (set! the-value "hello")
   (set! the-key "Enter")
@@ -59,6 +67,7 @@
   (hear 1)
   (hear 2)
   (hear 3)
+  (hear 4)
 
   (printf "busy, wider, another id\n")
   (set! (-> the-model busy) #t)

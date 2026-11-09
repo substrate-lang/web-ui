@@ -13,14 +13,14 @@
 (define the-model model)
 (define a-field field.state)
 
-(define (event-text [which u32]) -> string "hello")
-(define (event-truths) -> u32 0)
-(define (event-number [which u32]) -> f64 0.0)
+(define (event-text [node u32] [path string]) -> string "hello")
+(define (event-number [node u32] [path string]) -> f64 0.0)
+(define (node-is [node u32] [name string]) -> bool #f)
 
 (define (main)
   (field.mount (& a-field) 0 0 (& the-model))
   (trace-patches!)
-  (ui-event-source! event-text event-truths event-number)
+  (ui-read-with! event-text event-number node-is)
   (match (cast (ptr msg) (ui-heard (trace-listener 0)))
     [(typed text) (printf "typed ~a\n" text)]))
 

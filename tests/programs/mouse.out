@@ -10,13 +10,13 @@ events
   moved: 12 -5
   the lock changed: locked 1
 asking for the lock
-pointer-lock #2
+call #2 requestPointerLock
 --
 asking again, by changing the number
-pointer-lock #2
+call #2 requestPointerLock
 --
 nothing changed
 --
 releasing
-pointer-unlock #2
+call document exitPointerLock
 --

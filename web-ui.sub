@@ -5,11 +5,9 @@
 
 (provide (all-from-out ui) (all-from-out events) (all-from-out dom) attach prevent-default! stop-propagation!)
 
-(define (event-number [which u32]) -> f64 (dom-event-number (cast i32 which)))
+(define (prevent-default!) (dom-event-call "preventDefault"))
 
-(define (prevent-default!) (dom-prevent-default))
-
-(define (stop-propagation!) (dom-stop-propagation))
+(define (stop-propagation!) (dom-event-call "stopPropagation"))
 
 (define (attach-node [id string]) -> u32
   (let ([n (dom-element id)])
@@ -21,7 +19,7 @@
     n))
 
 (define (attach-start!)
-  (ui-event-source! dom-event-text dom-event-truths event-number)
+  (ui-read-with! dom-read-text dom-read-number dom-is)
   (ui-flush-with! dom-flush!))
 
 (begin-for-syntax
