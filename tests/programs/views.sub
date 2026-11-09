@@ -1,6 +1,6 @@
 ;; Views: the patches mounting and updating write, for each kind of changing part.
-(require-unqualified web/ui)
-(require-unqualified web/trace)
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
 (provide main)
 
 (struct item [id u32] [name string] [done bool])

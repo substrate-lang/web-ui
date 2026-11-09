@@ -1,6 +1,6 @@
 ;; Views: typed attributes, and listeners whose messages carry event data.
-(require-unqualified web/ui)
-(require-unqualified web/trace)
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
 (provide main)
 
 (struct model [id u32] [busy bool] [wide u32] [note string])

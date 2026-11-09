@@ -1,6 +1,6 @@
 ;; Views: a message type of one case, whose message carries event data, compiles.
-(require-unqualified web/ui)
-(require-unqualified web/trace)
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
 (provide main)
 
 (struct model [id u32])

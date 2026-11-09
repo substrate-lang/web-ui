@@ -1,6 +1,6 @@
 ;; [node place] stores an element's node number where the program says.
-(require-unqualified web/ui)
-(require-unqualified web/trace)
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
 (provide main)
 
 (struct model [screen u32] [overlay u32] [show bool])

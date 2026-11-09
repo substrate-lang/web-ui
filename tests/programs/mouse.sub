@@ -1,7 +1,6 @@
 ;; Views' mouse features: movement, button and lock in event data, and [pointer-lock e].
-(require-unqualified web/ui)
-(require-unqualified web/trace)
-(require-unqualified web/game/format)
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
 (provide main)
 
 (struct model [lock u32])
@@ -25,9 +24,9 @@
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
-    [(clicked button x) (print-format "  clicked: button ~d at x ~d\n" button x)]
-    [(moved dx dy) (print-format "  moved: ~d ~d\n" dx dy)]
-    [(lock-changed locked) (print-format "  the lock changed: locked ~d\n" locked)]))
+    [(clicked button x) (printf "  clicked: button ~a at x ~a\n" button x)]
+    [(moved dx dy) (printf "  moved: ~a ~a\n" dx dy)]
+    [(lock-changed locked) (printf "  the lock changed: locked ~a\n" (if locked 1 0))]))
 
 (define (main)
   (ui-event-source! event-text event-truths event-number)
