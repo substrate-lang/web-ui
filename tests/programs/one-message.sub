@@ -13,8 +13,8 @@
 (define the-model model)
 (define a-field field.state)
 
-(define (event-text [node u32] [path string]) -> string "hello")
-(define (event-number [node u32] [path string]) -> f64 0.0)
+(define (event-text [path string]) -> string "hello")
+(define (event-number [path string]) -> f64 0.0)
 (define (node-is [node u32] [name string]) -> bool #f)
 
 (define (main)

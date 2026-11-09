@@ -1,7 +1,6 @@
 ;; Views' mouse features: movement, button and lock in event data, and [pointer-lock e].
 (require-unqualified web-ui/ui)
 (require-unqualified web-ui/trace)
-(require-unqualified std/web/patches)
 (provide main)
 
 (struct model [lock u32])
@@ -18,11 +17,11 @@
 (define the-model model)
 (define a-screen screen.state)
 
-(define (event-text [node u32] [path string]) -> string "")
-(define (event-number [node u32] [path string]) -> f64
-  (cond [(!= node dom-event) 0.0] [(== path "offsetX") 40.0] [(== path "movementX") 12.0]
+(define (event-text [path string]) -> string "")
+(define (event-number [path string]) -> f64
+  (cond [(== path "offsetX") 40.0] [(== path "movementX") 12.0]
         [(== path "movementY") -5.0] [(== path "button") 2.0] [else 0.0]))
-(define (node-is [node u32] [name string]) -> bool (and (== node 2) (== name "pointerLockElement")))
+(define (node-is [node u32] [name string]) -> bool (and (== node 3) (== name "pointerLockElement")))
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))

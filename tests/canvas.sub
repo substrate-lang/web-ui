@@ -51,9 +51,9 @@
 (define the-model model)
 (define a-board board.state)
 
-(define (event-text [node u32] [path string]) -> string (if (== path "key") "ArrowUp" ""))
+(define (event-text [path string]) -> string (if (== path "key") "ArrowUp" ""))
 (define (node-is [node u32] [name string]) -> bool #f)
-(define (event-number [node u32] [path string]) -> f64
+(define (event-number [path string]) -> f64
   (cond
     [(== path "timeStamp") 1234.5]
     [(== path "offsetX") 12.0]

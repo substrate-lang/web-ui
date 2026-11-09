@@ -19,7 +19,7 @@
     n))
 
 (define (attach-start!)
-  (ui-read-with! dom-read-text dom-read-number dom-is)
+  (ui-read-with! dom-event-text dom-event-number dom-is)
   (ui-flush-with! dom-flush!))
 
 (begin-for-syntax

@@ -16,9 +16,11 @@
 (define (number [n u32]) (printf "~a" n))
 
 (define (node [n u32])
-  (cond [(== n dom-document) (printf "document")]
-        [(== n dom-event) (printf "event")]
-        [else (printf "#") (number n)]))
+  (if (== n dom-document)
+      (printf "document")
+      (begin
+        (printf "#")
+        (number n))))
 
 (define (written [w (ptr u32)]) (print-bytes (cast (ptr u8) (@ w 0)) (@ w 1)))
 
