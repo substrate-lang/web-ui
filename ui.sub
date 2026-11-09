@@ -1,12 +1,14 @@
-;; Views: a small language for describing web pages, compiled to patches (std/web/patches).
+;; Views and components: a small language for describing web pages, compiled to patches (std/web/patches).
 (require-unqualified host/events)
 (require-unqualified std/web/patches)
 (require-unqualified std/web/canvas)
 
-(provide view messages
+(provide view messages component emit! send! ui-root request! subscribe! unsubscribe!
          ui-text-set! ui-text-slot! ui-attr-set! ui-attr-slot! ui-int-set! ui-int-slot! ui-truth-set! ui-truth-slot!
          ui-number-set! ui-number-slot! ui-effect-slot! ui-pointer-lock-slot! ui-event-source! ui-event-text
-         ui-event-truth ui-event-number ui-heard ui-deliver! ui-send
+         ui-event-truth ui-event-number ui-listener ui-listen ui-heard ui-listener-heard
+         ui-instance ui-parent-listener ui-instance-start! ui-instance-end! ui-enter! ui-leave! ui-hear! ui-deliver
+         ui-emit ui-send ui-root! ui-render! ui-flush-with!
          ui-row ui-rows ui-each! ui-each-clear!)
 
 ;; ---- run-time support: slots ----
@@ -78,21 +80,25 @@
 
 ;; ---- run-time support: event listeners ----
 
-(struct listener-head [handle handler] [fill (fn ((ptr void)))])
+;; A listener's slot: the event's tag, the function that fills the message with the event's data, the instance the
+;; message goes to, and the message.
+(struct ui-listener [handle handler] [fill (fn ((ptr void)))] [instance (ptr ui-instance)] [message (ptr void)])
 
-(define delivery (fn ((ptr void))) 0)
+(define (ui-listen [node u32] [event string] [l (ptr ui-listener)] [message (ptr void)] [fill (fn ((ptr void)))]
+                   [window bool])
+  (set! (-> l handle) ui-listener-heard)
+  (set! (-> l fill) fill)
+  (set! (-> l instance) current)
+  (set! (-> l message) message)
+  (if window (dom-listen-window! node event (cast (ptr void) l)) (dom-listen! node event (cast (ptr void) l))))
 
-(define (ui-deliver! [f (fn ((ptr void)))]) (set! delivery f))
+(define (ui-heard [at (ptr void)]) -> (ptr void)
+  (let* ([l (cast (ptr ui-listener) at)] [fill (-> l fill)])
+    (when (!= fill 0) (fill (-> l message)))
+    (-> l message)))
 
-(define (ui-send [e (ptr void)])
-  (let ([f delivery])
-    (when (!= f 0) (f e))))
-
-(define (ui-listener-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32]) (ui-send (ui-heard tag)))
-
-(define (ui-listen [node u32] [event string] [message (ptr void)] [window bool])
-  (set! (-> (cast (ptr listener-head) message) handle) ui-listener-heard)
-  (if window (dom-listen-window! node event message) (dom-listen! node event message)))
+(define (ui-listener-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (ui-deliver (-> (cast (ptr ui-listener) tag) instance) (ui-heard tag)))
 
 (define event-text (fn (u32) -> string) 0)
 (define event-truths (fn () -> u32) 0)
@@ -115,10 +121,190 @@
   (let ([f event-numbers])
     (if (== f 0) 0.0 (f which))))
 
-(define (ui-heard [at (ptr void)]) -> (ptr void)
-  (let ([fill (-> (cast (ptr listener-head) at) fill)] [message (cast (ptr void) (+ (cast (ptr u8) at) 8))])
-    (when (!= fill 0) (fill message))
-    message))
+;; ---- run-time support: components ----
+
+;; An instance's header: its component's update and trap handler, its state, the instance it is in, the names of its
+;; message and event types, its parent's listeners for its events, and its requests.
+(struct ui-instance
+  [update (fn ((ptr void) (ptr void)))] [trapped (fn ((ptr void) string))] [state (ptr void)] [parent (ptr ui-instance)]
+  [messages string] [events string] [heard (ptr ui-parent-listener)] [heard-count u32] [requests (ptr ui-request)])
+
+(struct ui-parent-listener [call (fn ((ptr void) (ptr void)))] [parent (ptr ui-instance)])
+
+;; A request's tag, from request! or subscribe!.
+(struct ui-request [handle handler] [instance (ptr ui-instance)] [run handler] [once bool] [next (ptr ui-request)])
+
+(typedef ui-render (fn ()))
+
+;; The instance whose code is running, and how deep the deliveries of messages are.
+(define current (ptr ui-instance) 0)
+(define delivering u32 0)
+
+(define roots (array ui-render 32))
+(define root-count u32 0)
+(define flush ui-render 0)
+
+(define (ui-enter! [i (ptr ui-instance)]) -> (ptr ui-instance)
+  (let ([outer current])
+    (set! current i)
+    outer))
+
+(define (ui-leave! [outer (ptr ui-instance)]) (set! current outer))
+
+(define (ui-instance-start! [i (ptr ui-instance)] [state (ptr void)] [update (fn ((ptr void) (ptr void)))]
+                            [trapped (fn ((ptr void) string))] [messages string] [events string]
+                            [heard (ptr ui-parent-listener)] [heard-count u32])
+  (set! (-> i update) update)
+  (set! (-> i trapped) trapped)
+  (set! (-> i state) state)
+  (set! (-> i parent) current)
+  (set! (-> i messages) messages)
+  (set! (-> i events) events)
+  (set! (-> i heard) heard)
+  (set! (-> i heard-count) heard-count)
+  (set! (-> i requests) 0)
+  (when (!= trapped 0) (trap-handler! ui-trapped)))
+
+;; An ended instance's requests drop their events: one from request! is freed when its event comes, and one from
+;; subscribe! is kept.
+(define (ui-instance-end! [i (ptr ui-instance)])
+  (let ([r (-> i requests)])
+    (while (!= r 0)
+      (let ([next (-> r next)])
+        (set! (-> r instance) 0)
+        (set! (-> r next) 0)
+        (set! r next))))
+  (set! (-> i requests) 0)
+  (set! (-> i update) 0))
+
+(define (ui-hear! [heard (ptr ui-parent-listener)] [k u32] [call (fn ((ptr void) (ptr void)))])
+  (let ([h (+ heard k)])
+    (set! (-> h call) call)
+    (set! (-> h parent) current)))
+
+;; Gives the message to the instance's update, then draws the page again once no update is running.
+(define (ui-deliver [i (ptr ui-instance)] [message (ptr void)])
+  (when (and (!= i 0) (!= (-> i update) 0))
+    (let ([outer current])
+      (set! current i)
+      (+= delivering 1)
+      ((-> i update) (-> i state) message)
+      (-= delivering 1)
+      (set! current outer)
+      (when (== delivering 0) (ui-render!)))))
+
+(define (ui-root! [render ui-render])
+  (when (== root-count 32) (host-trap "ui: more than 32 components are attached"))
+  (set! (@ roots root-count) render)
+  (+= root-count 1))
+
+(define (ui-flush-with! [f ui-render]) (set! flush f))
+
+(define (ui-render!)
+  (for ([k u32 0]) (< k root-count) (+= k 1) ((@ roots k)))
+  (let ([f flush])
+    (when (!= f 0) (f))))
+
+(define (wrong-type! [who string] [kind string] [declared string] [given string])
+  (let ([b (make-buffer)])
+    (buffer-add-string! (& b) who)
+    (if (== (-> declared length) 0)
+        (begin
+          (buffer-add-string! (& b) ": this component declares no ")
+          (buffer-add-string! (& b) kind))
+        (begin
+          (buffer-add-string! (& b) ": this component's ")
+          (buffer-add-string! (& b) kind)
+          (buffer-add-string! (& b) " are ")
+          (buffer-add-string! (& b) declared)
+          (buffer-add-string! (& b) ", not ")
+          (buffer-add-string! (& b) given)))
+    (host-trap (buffer-string (& b)))))
+
+(define (running [who string]) -> (ptr ui-instance)
+  (let ([i current])
+    (when (== i 0)
+      (let ([b (make-buffer)])
+        (buffer-add-string! (& b) who)
+        (buffer-add-string! (& b) ": no component's code is running")
+        (host-trap (buffer-string (& b)))))
+    i))
+
+(define (ui-emit [events string] [e (ptr void)])
+  (let ([i (running "emit!")])
+    (unless (== (-> i events) events) (wrong-type! "emit!" "events" (-> i events) events))
+    (for ([k u32 0]) (< k (-> i heard-count)) (+= k 1)
+      (let ([h (+ (-> i heard) k)])
+        ((-> h call) (cast (ptr void) (-> h parent)) e)))))
+
+(define (ui-send [messages string] [m (ptr void)])
+  (let ([i (running "send!")])
+    (unless (== (-> i messages) messages) (wrong-type! "send!" "messages" (-> i messages) messages))
+    (ui-deliver i m)))
+
+;; ---- run-time support: requests ----
+
+(define (ui-request-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (let* ([r (cast (ptr ui-request) tag)] [i (-> r instance)] [once (-> r once)])
+    (when (!= i 0)
+      (let ([outer current])
+        (set! current i)
+        (+= delivering 1)
+        ((-> r run) source kind id tag value)
+        (-= delivering 1)
+        (set! current outer)))
+    (when once
+      (when (!= i 0) (unlink! i r))
+      (free r))
+    (when (and (!= i 0) (== delivering 0)) (ui-render!))))
+
+(define (unlink! [i (ptr ui-instance)] [r (ptr ui-request)])
+  (if (== (-> i requests) r)
+      (set! (-> i requests) (-> r next))
+      (let ([p (-> i requests)])
+        (while (and (!= p 0) (!= (-> p next) r)) (set! p (-> p next)))
+        (when (!= p 0) (set! (-> p next) (-> r next))))))
+
+(define (new-request [h handler] [once bool] [who string]) -> (ptr void)
+  (let ([i (running who)] [r (cast (ptr ui-request) (malloc (sizeof ui-request)))])
+    (set! (-> r handle) ui-request-heard)
+    (set! (-> r instance) i)
+    (set! (-> r run) h)
+    (set! (-> r once) once)
+    (set! (-> r next) (-> i requests))
+    (set! (-> i requests) r)
+    (cast (ptr void) r)))
+
+;; A tag for a host call that answers with one event. The event runs h for the component whose code asked, and the tag
+;; is freed after it.
+(define (request! [h handler]) -> (ptr void) (new-request h #t "request!"))
+
+;; A tag for a host call whose events keep coming, such as a worker's. Each runs h for the component whose code asked,
+;; until unsubscribe! frees the tag.
+(define (subscribe! [h handler]) -> (ptr void) (new-request h #f "subscribe!"))
+
+(define (unsubscribe! [tag (ptr void)])
+  (let* ([r (cast (ptr ui-request) tag)] [i (-> r instance)])
+    (when (-> r once) (host-trap "unsubscribe!: this tag is from request!, which frees itself"))
+    (when (!= i 0) (unlink! i r))
+    (free r)))
+
+;; ---- run-time support: traps ----
+
+;; A trap goes to the trap handler of the instance whose code was running, or of the nearest instance it is in.
+(define (ui-trapped [why string])
+  (let ([i current])
+    (set! delivering 0)
+    (set! current 0)
+    (while (and (!= i 0) (== (-> i trapped) 0)) (set! i (-> i parent)))
+    (when (== i 0)
+      (let ([b (make-buffer)])
+        (buffer-add-string! (& b) "error: ")
+        (buffer-add-string! (& b) why)
+        (host-exit -1 (buffer-string (& b)))))
+    (dom-discard!)
+    ((-> i trapped) (-> i state) why)
+    (ui-render!)))
 
 ;; ---- run-time support: each ----
 
@@ -230,7 +416,7 @@
 
   (define view-name datum 0)
   (define message-type datum 0)
-  (define listener-type datum 0)
+  (define listening bool #f)
   (define blocks u32 0)
   (define fields u32 0)
   (define fills datum 0)
@@ -321,7 +507,39 @@
           (if (and (pair? v) (== (car v) 'ui-view)) v 0))
         0))
 
+  (define (component-of [head datum]) -> datum
+    (if (== (identifier-binding-kind head) 'compile-time-value)
+        (let ([c (syntax-local-value head)])
+          (if (and (pair? c) (== (car c) 'ui-component)) c 0))
+        0))
+
   (define (view-names [v datum]) -> datum (syntax->list (cadr v)))
+
+  ;; The message type of a view's listeners, or 0 when it has none.
+  (define (view-messages [v datum]) -> datum (let ([m (cadddr v)]) (if (identifier? m) m 0)))
+
+  (define (shape [x datum]) -> datum (syntax->datum (datum->syntax #'here x 0)))
+
+  (define (same-type? [a datum] [b datum]) -> bool (equal? (shape (type-info a)) (shape (type-info b))))
+
+  (define (type-name [t datum]) -> datum (syntax-e t))
+
+  ;; A variant's case named c, as type-info gives it: (case (field . type) ...), or 0.
+  (define (variant-case [t datum] [c datum]) -> datum
+    (let ([cases (caddr (type-info t))] [found datum 0])
+      (while (pair? cases)
+        (when (== (syntax-e (car (car cases))) (syntax-e c)) (set! found (car cases)))
+        (set! cases (cdr cases)))
+      found))
+
+  (define (case-names [t datum]) -> datum
+    (for/list ([c (caddr (type-info t))]) (syntax-e (car c))))
+
+  (define (single-case? [t datum]) -> bool (== (length (caddr (type-info t))) 1))
+
+  ;; The name of a variant's type as a string, for the run-time checks of emit! and send!.
+  (define (type-text [t datum]) -> datum
+    (if (== t 0) (literal '"") (literal (string->datum (symbol->string (syntax-e (cadr (type-info t))))))))
 
   (define (check-arguments! [f datum] [v datum] [arguments datum])
     (let ([n (length (syntax->list (caddr v)))])
@@ -343,7 +561,7 @@
     (let ([e (syntax-e f)] [l (syntax->list f)])
       (cond [(string? e) (html-text! (html-of b) (datum->string e))]
             [(or (== l 0) (null? l) (not (identifier? (car l))))
-             (fail f '"expected a child: text in quotes, an element (tag ...), (text e), (int e), (if c child child), (when c child ...), (each [x items n] #:key k child ...) or a view (v e ...)")]
+             (fail f '"expected a child: text in quotes, an element (tag ...), (text e), (int e), (if c child child), (when c child ...), (each [x items n] #:key k child ...), a view (v e ...) or a component (c ([parameter value] ...))")]
             [else
              (let ([word (syntax-e (car l))])
                (cond [(== word 'text) (text! b f l)]
@@ -352,6 +570,7 @@
                      [(== word 'when) (when! b f l)]
                      [(== word 'each) (each! b f l)]
                      [(!= (view-of (car l)) 0) (call! b f l (view-of (car l)))]
+                     [(!= (component-of (car l)) 0) (component-call! b f l (component-of (car l)))]
                      [else (element! b f l)]))])))
 
   (define (text! [b (ptr block)] [f datum] [l datum])
@@ -478,9 +697,10 @@
 
   (define (listener! [b (ptr block)] [a datum] [al datum] [node (ptr datum)] [window bool])
     (unless (== (length al) 3) (fail a (if window '"expected [on-window event message]" '"expected [on event message]")))
-    (when (== message-type 0) (fail a '"a listener needs a message type: add (messages TYPE) to this module, before the view"))
+    (when (== message-type 0)
+      (fail a '"a listener needs a message type: give the component #:messages, or add (messages TYPE) to this module before the view"))
     (let* ([event (syntax-e (cadr al))] [m (caddr al)] [filled (event-fill m)]
-           [slot (field! b listener-type)] [at (marked! b node)])
+           [slot (field! b #'ui-listener)] [message (field! b message-type)] [at (marked! b node)])
       (when (and (not window) (symbol? event) (!= (memq event window-events) 0))
         (fail (cadr al) (format "~a is an event of the window, not of an element: write [on-window ~a message]" `(,event ,event))))
       (unless (or (string? event)
@@ -488,9 +708,10 @@
                        (or (!= (memq event events) 0) (and window (!= (memq event window-events) 0)))))
         (fail (cadr al) (format "unknown event ~s (to listen for an event that the DOM does not define, write its name as a string: [~a \"~a\" message])"
                                 `(,event ,(if window 'on-window 'on) ,event))))
-      (mount! b #`(set! (-> bs #,slot fill) #,(if (== filled 0) #'0 (cdr filled))))
-      (both! b #`(set! (-> bs #,slot message) #,(if (== filled 0) m (car filled))))
+      (set! listening #t)
+      (both! b #`(set! (-> bs #,message) #,(if (== filled 0) m (car filled))))
       (mount! b #`(ui-listen #,at #,(literal (if (string? event) event (string->datum (symbol->string event)))) (& (-> bs #,slot))
+                             (cast (ptr void) (& (-> bs #,message))) #,(if (== filled 0) #'0 (cdr filled))
                              #,(literal (boolean window))))))
 
   (define (event-data [x datum]) -> datum
@@ -636,6 +857,13 @@
 
   (define (call! [b (ptr block)] [f datum] [l datum] [v datum])
     (check-arguments! f v (cdr l))
+    (let ([sent (view-messages v)])
+      (unless (or (== sent 0) (and (!= message-type 0) (same-type? sent message-type)))
+        (fail f (format "the view ~a sends messages of the type ~a, but ~a"
+                        `(,(syntax-e (car l)) ,(type-name sent)
+                          ,(if (== message-type 0)
+                               '"this view has no message type"
+                               (format "this view's messages are ~a" `(,(type-name message-type)))))))))
     (html-comment! (html-of b) "a")
     (let ([anchor (node! b)] [names (view-names v)])
       (let ([state (field! b (car names))])
@@ -643,36 +871,123 @@
         (update! b #`(#,(caddr names) (& (-> bs #,state)) #,@(cdr l)))
         (unmount! b #`(#,(cadddr names) (& (-> bs #,state)) #f)))))
 
+  ;; ---- using a component ----
+
+  (define (component-text [l datum]) -> datum (syntax-e (car l)))
+
+  (define (attribute-named [attributes datum] [name datum]) -> datum
+    (let ([found datum 0])
+      (while (pair? attributes)
+        (when (== (syntax-e (car (car attributes))) name) (set! found (car attributes)))
+        (set! attributes (cdr attributes)))
+      found))
+
+  ;; (c ([parameter value] ... [on event message] ...)): the values in the order of c's parameters, then the listeners.
+  (define (component-attributes [f datum] [l datum] [c datum]) -> datum
+    (let ([params (syntax->list (caddr c))] [given nil] [listeners nil]
+          [attributes (cond [(null? (cdr l)) nil]
+                            [(and (null? (cddr l)) (!= (syntax->list (cadr l)) 0)) (syntax->list (cadr l))]
+                            [else (fail f '"expected (component ([parameter value] ... [on event message] ...))")])])
+      (for-each (lambda ([a datum])
+                  (let ([al (syntax->list a)])
+                    (unless (and (!= al 0) (pair? al) (identifier? (car al)))
+                      (fail a '"expected [parameter value] or [on event message]"))
+                    (cond [(== (syntax-e (car al)) 'on)
+                           (unless (and (== (length al) 3) (identifier? (cadr al)) (identifier? (caddr al)))
+                             (fail a '"expected [on event message], with the names of a case of the component's events and a case of this view's messages"))
+                           (set! listeners (cons al listeners))]
+                          [(!= (attribute-named given (syntax-e (car al))) 0)
+                           (fail (car al) (format "the parameter ~a is given twice" `(,(syntax-e (car al)))))]
+                          [(== (attribute-named (for/list ([p params]) (syntax->list p)) (syntax-e (car al))) 0)
+                           (fail (car al) (format "the component ~a has no parameter ~a" `(,(component-text l) ,(syntax-e (car al)))))]
+                          [(!= (length al) 2) (fail a '"expected [parameter value]")]
+                          [else (set! given (cons al given))])))
+                attributes)
+      (cons (for/list ([p params])
+              (let ([found (attribute-named given (syntax-e (car (syntax->list p))))])
+                (when (== found 0)
+                  (fail f (format "the component ~a needs the parameter ~a" `(,(component-text l) ,(syntax-e (car (syntax->list p)))))))
+                (cadr found)))
+            (reverse listeners))))
+
+  ;; Defines the function that turns an event of the component into a message of this view, and gives its name.
+  (define (parent-listener! [l datum] [c datum] [al datum]) -> datum
+    (let* ([events (cadddr c)] [event (cadr al)] [message (caddr al)]
+           [fn (named (format "heard~a" `(,(make-integer (length fills)))))])
+      (unless (identifier? events) (fail event (format "the component ~a raises no events" `(,(component-text l)))))
+      (when (== message-type 0)
+        (fail message '"a listener needs a message type: give the component #:messages, or add (messages TYPE) to this module before the view"))
+      (let ([event-case (variant-case events event)] [message-case (variant-case message-type message)])
+        (when (== event-case 0)
+          (fail event (format "~a is not an event of the component ~a, whose events are ~a"
+                              `(,(syntax-e event) ,(component-text l) ,(case-names events)))))
+        (when (== message-case 0)
+          (fail message (format "~a is not a message of this view, whose messages are ~a" `(,(syntax-e message) ,(case-names message-type)))))
+        (let ([carried (shape (for/list ([x (cdr event-case)]) (cdr x)))] [taken (shape (for/list ([x (cdr message-case)]) (cdr x)))])
+          (unless (or (null? taken) (equal? carried taken))
+            (fail message (format "the message ~a takes ~a, but the event ~a carries ~a"
+                                  `(,(syntax-e message) ,taken ,(syntax-e event) ,carried)))))
+        (let* ([vars (for/list ([x (cdr event-case)]) (literal (string->symbol (format-message "v~a" `(,(syntax-e (car x)))))))]
+               [pattern (if (null? vars) event #`(#,event #,@vars))]
+               [made (if (null? (cdr message-case)) message #`(#,message #,@vars))])
+          (set! fills
+                (cons #`(define (#,fn [parent (ptr void)] [e (ptr void)])
+                          (match (cast (ptr #,events) e)
+                            [#,pattern
+                             (let ([m #,message-type #,made]) (ui-deliver (cast (ptr ui-instance) parent) (cast (ptr void) (& m))))]
+                            #,@(if (single-case? events) nil `(,#'[_ (begin)]))))
+                      fills))
+          fn))))
+
+  (define (component-call! [b (ptr block)] [f datum] [l datum] [c datum])
+    (let* ([names (syntax->list (cadr c))] [parsed (component-attributes f l c)] [values (car parsed)]
+           [listeners (cdr parsed)] [n (length listeners)])
+      (html-comment! (html-of b) "a")
+      (let* ([anchor (node! b)] [instance (field! b (car names))]
+             [heard datum (if (== n 0) 0 (field! b #`(array ui-parent-listener #,(number n))))]
+             [k u32 0])
+        (for-each (lambda ([al datum])
+                    (mount! b #`(ui-hear! (cast (ptr ui-parent-listener) (& (-> bs #,heard))) #,(number k) #,(parent-listener! l c al)))
+                    (+= k 1))
+                  listeners)
+        (mount! b #`(#,(cadr names) (& (-> bs #,instance)) 0 #,anchor
+                                    #,(if (== n 0) #'0 #`(cast (ptr ui-parent-listener) (& (-> bs #,heard)))) #,(number n)
+                                    #,@values))
+        (update! b #`(#,(caddr names) (& (-> bs #,instance)) #,@values))
+        (unmount! b #`(#,(cadddr names) (& (-> bs #,instance)) #f)))))
+
   (define (cddddr [l datum]) -> datum (cdr (cdddr l)))
 
   ;; ---- the macros themselves ----
 
   (define (message-type-name [s datum]) -> datum (datum->syntax s 'ui-message-type s))
 
-  ;; A listener's state: listener-head's fields, then the message.
-  (define (listener-type-name [s datum]) -> datum (datum->syntax s 'ui-message-listener s))
-
   (define (messages-form [s datum]) -> datum
     (syntax-match s
-      [(_ (? identifier? m))
-       #`(begin
-           (define-syntax #,(message-type-name s) (quote-syntax #,m))
-           (struct #,(listener-type-name s) [handle handler] [fill (fn ((ptr void)))] [message #,m]))]))
+      [(_ (? identifier? m)) #`(define-syntax #,(message-type-name s) (quote-syntax #,m))]))
 
+  ;; (view (v parameter ...) child ...), or (view (v parameter ...) #:messages TYPE child ...) to give its listeners a
+  ;; message type other than the module's; #:messages #f gives it none.
   (define (view-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? v) parameter ...) child ...)
-       (let ([declared (message-type-name s)])
+       (let* ([declared (message-type-name s)]
+              [given (and (pair? child) (== (syntax-e (car child)) '#:messages))]
+              [children (if given (cddr child) child)])
+         (when (and given (not (pair? (cdr child)))) (fail s '"expected #:messages TYPE"))
          (set! view-name v)
-         (set! message-type (if (== (identifier-binding-kind declared) 'compile-time-value) (syntax-local-value declared) 0))
-         (set! listener-type (listener-type-name s))
+         (set! message-type
+               (cond [given (if (== (syntax-e (cadr child)) '#f) 0 (cadr child))]
+                     [(== (identifier-binding-kind declared) 'compile-time-value) (syntax-local-value declared)]
+                     [else 0]))
+         (set! listening #f)
          (set! blocks 0)
          (set! fields 0)
          (set! fills nil)
          (set! definitions nil)
          (set! in-rows #f)
          (let ([b (new-block #t)])
-           (compile-children! b child)
+           (compile-children! b children)
            (finish! b)
            #`(begin
                #,@(reverse definitions)
@@ -683,10 +998,132 @@
                #,@(reverse fills)
                (define-syntax #,v
                  (view-value (quote-syntax ((#,(-> b state) #,(named '"mount") #,(named '"update") #,(-> b unmounter))
-                                            (#,@parameter))))))))]))
+                                            (#,@parameter)
+                                            #,(if listening message-type #'#f))))))))]))
 
   (define (view-value [parts datum]) -> datum
-    (let ([l (syntax->list parts)]) `(ui-view ,(car l) ,(cadr l)))))
+    (let ([l (syntax->list parts)]) `(ui-view ,(car l) ,(cadr l) ,(caddr l))))
+
+  ;; ---- components ----
+
+  (define (component-name [base datum] [what datum]) -> datum
+    (datum->syntax base (string->symbol (format-message "~a.~a" `(,(syntax-e base) ,what))) base))
+
+  (define (option-of [options datum] [word datum]) -> datum
+    (let ([found (assq word options)]) (if (== found 0) 0 (cdr found))))
+
+  (define (variant! [who datum] [t datum] [what datum])
+    (unless (and (identifier? t) (let ([info (type-info t)]) (and (pair? info) (== (car info) 'variant))))
+      (raise-syntax-error who (datum->string (format "the ~a must be a variant type" `(,what))) t)))
+
+  ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
+  ;; #:init f, #:free f, #:events TYPE and #:trapped f. Its instances each have a state, which the children see as s.
+  (define (component-form [s datum]) -> datum
+    (syntax-match s
+      [(_ ((? identifier? name) parameter ...) rest ...)
+       (let ([options nil] [children rest])
+         (while (and (pair? children) (keyword? (syntax-e (car children))))
+           (let ([word (syntax-e (car children))])
+             (unless (!= (memq word '(#:state #:messages #:update #:init #:free #:events #:trapped)) 0)
+               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:free, #:events and #:trapped" (car children)))
+             (unless (pair? (cdr children)) (raise-syntax-error 'component "expected a value after the option" (car children)))
+             (unless (== (assq word options) 0) (raise-syntax-error 'component "this option is given twice" (car children)))
+             (set! options (cons (cons word (cadr children)) options))
+             (set! children (cddr children))))
+         (let* ([state (option-of options '#:state)] [state-l (if (== state 0) 0 (syntax->list state))]
+                [messages (option-of options '#:messages)] [update (option-of options '#:update)]
+                [init (option-of options '#:init)] [free (option-of options '#:free)] [events (option-of options '#:events)]
+                [trapped (option-of options '#:trapped)])
+           (unless (and (!= state-l 0) (== (length state-l) 2) (identifier? (car state-l)))
+             (raise-syntax-error 'component "a component needs #:state [name TYPE]" (if (== state 0) s state)))
+           (when (and (== messages 0) (!= update 0)) (raise-syntax-error 'component "#:update needs #:messages" update))
+           (when (and (!= messages 0) (== update 0)) (raise-syntax-error 'component "#:messages needs #:update" messages))
+           (unless (== messages 0) (variant! 'component messages '"messages"))
+           (unless (== events 0) (variant! 'component events '"events"))
+           (let* ([s-name (car state-l)] [t (cadr state-l)] [view (component-name name '"view")]
+                  [instance (component-name name '"instance")] [mount (component-name name '"mount")]
+                  [update-fn (component-name name '"update")] [unmount (component-name name '"unmount")]
+                  [adapter (component-name name '"message")] [trap (component-name name '"trap")]
+                  [names (for/list ([p parameter]) (car (syntax->list p)))])
+             #`(begin
+                 (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages) #,@children)
+                 (struct #,instance [head ui-instance] [state #,t] [view #,(component-name view '"state")])
+                 #,@(if (== messages 0)
+                        nil
+                        `(,#`(define (#,adapter [state (ptr void)] [message (ptr void)])
+                               (#,update (cast (ptr #,t) state) (cast (ptr #,messages) message)))))
+                 #,@(if (== trapped 0)
+                        nil
+                        `(,#`(define (#,trap [state (ptr void)] [why string]) (#,trapped (cast (ptr #,t) state) why))))
+                 (define (#,mount [i (ptr #,instance)] [parent u32] [before u32] [heard (ptr ui-parent-listener)]
+                                  [heard-count u32] #,@parameter)
+                   (ui-instance-start! (& (-> i head)) (cast (ptr void) (& (-> i state)))
+                                       #,(if (== messages 0) #'0 adapter) #,(if (== trapped 0) #'0 trap)
+                                       #,(type-text messages) #,(type-text events) heard heard-count)
+                   (memset (& (-> i state)) 0 (sizeof #,t))
+                   (let ([outer (ui-enter! (& (-> i head)))])
+                     #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
+                     (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
+                     (ui-leave! outer)))
+                 (define (#,update-fn [i (ptr #,instance)] #,@parameter)
+                   (let ([outer (ui-enter! (& (-> i head)))])
+                     (#,(component-name view '"update") (& (-> i view)) (& (-> i state)) #,@names)
+                     (ui-leave! outer)))
+                 (define (#,unmount [i (ptr #,instance)] [detach bool])
+                   (let ([outer (ui-enter! (& (-> i head)))])
+                     (#,(component-name view '"unmount") (& (-> i view)) detach)
+                     #,@(if (== free 0) nil `(,#`(#,free (& (-> i state)))))
+                     (ui-instance-end! (& (-> i head)))
+                     (ui-leave! outer)))
+                 (define-syntax #,name
+                   (component-value (quote-syntax ((#,instance #,mount #,update-fn #,unmount) (#,@parameter)
+                                                   #,(if (== events 0) #'#f events)
+                                                   #,(if (== messages 0) #'#f messages)))))))))]))
+
+  (define (component-value [parts datum]) -> datum
+    (let ([l (syntax->list parts)]) `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l))))
+
+  ;; The variant type of a case's constructor: (case value ...) or case.
+  (define (constructed-type [who datum] [e datum]) -> datum
+    (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
+           [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
+      (syntax-match v
+        [('#%form _ ('#%substrate-construct t _ _)) t]
+        [_ (raise-syntax-error who "expected a case of a variant: (case value ...), or case alone" e)])))
+
+  (define (emit-form [s datum]) -> datum
+    (syntax-match s
+      [(_ e) (let ([t (constructed-type 'emit! e)])
+               #`(let ([event #,t #,e]) (ui-emit #,(type-text t) (cast (ptr void) (& event)))))]
+      [_ (raise-syntax-error 'emit! "expected (emit! (event value ...))" s)]))
+
+  (define (send-form [s datum]) -> datum
+    (syntax-match s
+      [(_ e) (let ([t (constructed-type 'send! e)])
+               #`(let ([message #,t #,e]) (ui-send #,(type-text t) (cast (ptr void) (& message)))))]
+      [_ (raise-syntax-error 'send! "expected (send! (message value ...))" s)]))
+
+  ;; (ui-root mount node (c ([parameter value] ...))) defines mount, which puts an instance of c in the node and makes it
+  ;; a root, which each drawing of the page updates.
+  (define (root-form [s datum]) -> datum
+    (syntax-match s
+      [(_ (? identifier? mount) node call)
+       (let* ([l (syntax->list call)] [c (if (and (!= l 0) (pair? l) (identifier? (car l))) (component-of (car l)) 0)])
+         (when (== c 0) (raise-syntax-error 'ui-root "expected a component: (c ([parameter value] ...))" call))
+         (let* ([names (syntax->list (cadr c))] [parsed (component-attributes call l c)] [values (car parsed)])
+           (unless (null? (cdr parsed))
+             (raise-syntax-error 'ui-root "a component put in an element has no parent to listen to its events" call))
+           #`(begin
+               (define instance #,(car names))
+               (define (render) (#,(caddr names) (& instance) #,@values))
+               (define (#,mount)
+                 (#,(cadr names) (& instance) #,node 0 0 0 #,@values)
+                 (ui-root! render)))))]
+      [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...)))" s)])))
 
 (define-syntax messages messages-form)
 (define-syntax view view-form)
+(define-syntax component component-form)
+(define-syntax emit! emit-form)
+(define-syntax send! send-form)
+(define-syntax ui-root root-form)

@@ -1,0 +1,14 @@
+;; emit! given a value that is not a case of a variant.
+(require-unqualified web-ui/ui)
+
+(struct counter-state [count i32])
+(variant counter-message [up])
+
+(define (counter-update [s (ptr counter-state)] [e (ptr counter-message)]) (emit! (-> s count)))
+
+(component (counter)
+  #:state [s counter-state]
+  #:messages counter-message
+  #:update counter-update
+  (p (int (-> s count))))
+(define (main) 0)

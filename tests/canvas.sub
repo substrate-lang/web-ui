@@ -38,7 +38,7 @@
   (canvas-clear-rect! 0 0 4 4)
   (canvas-draw-sprite! sheet 16 16 5 40 50 #f)
   (canvas-draw-sprite! sheet 16 16 9 60 50 #t)
-  (canvas-load-image! "ignored.png"))
+  (canvas-load-image! "ignored.png" 0))
 
 (view (board [m (ptr model)])
   (when (-> m show)
@@ -79,7 +79,7 @@
   (set! (-> the-model label) "hello")
   (ui-event-source! event-text event-truths event-number)
   (printf "load an image\n")
-  (set! sheet (canvas-load-image! "assets/sprites.png"))
+  (set! sheet (canvas-load-image! "assets/sprites.png" 0))
   (trace-patches!)
   (printf "mount\n")
   (board.mount (& a-board) 0 0 (& the-model))

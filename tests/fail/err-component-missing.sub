@@ -1,0 +1,15 @@
+;; A component used without one of its parameters.
+(require-unqualified web-ui/ui)
+
+(struct counter-state [count i32])
+
+(component (counter [step i32] [start i32])
+  #:state [s counter-state]
+  (p (int (-> s count))))
+
+(struct page-state [n i32])
+
+(component (page)
+  #:state [s page-state]
+  (counter ([step 1])))
+(define (main) 0)

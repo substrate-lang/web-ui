@@ -1,0 +1,12 @@
+;; A component without #:state.
+(require-unqualified web-ui/ui)
+
+(variant msg [increment])
+
+(define (update [s (ptr void)] [e (ptr msg)]) 0)
+
+(component (counter)
+  #:messages msg
+  #:update update
+  (p "count"))
+(define (main) 0)

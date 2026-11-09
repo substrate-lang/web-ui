@@ -1,0 +1,52 @@
+;; The language of web pages: ui.sub's views and components, and attach, which puts components in elements of the page.
+(require-unqualified ui "ui.sub")
+(require-unqualified events host/events)
+(require-unqualified dom std/web/dom)
+
+(provide (all-from-out ui) (all-from-out events) (all-from-out dom) attach prevent-default! stop-propagation!)
+
+(define (event-number [which u32]) -> f64 (dom-event-number (cast i32 which)))
+
+(define (prevent-default!) (dom-prevent-default))
+
+(define (stop-propagation!) (dom-stop-propagation))
+
+(define (attach-node [id string]) -> u32
+  (let ([n (dom-element id)])
+    (when (== n 0)
+      (let ([b (make-buffer)])
+        (buffer-add-string! (& b) "attach: no element has the id ")
+        (buffer-add-string! (& b) id)
+        (host-trap (buffer-string (& b)))))
+    n))
+
+(define (attach-start!)
+  (ui-event-source! dom-event-text dom-event-truths event-number)
+  (ui-flush-with! dom-flush!))
+
+(begin-for-syntax
+  (require-unqualified compiler/macros)
+
+  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element with its id.
+  (define (attach-form [s datum]) -> datum
+    (syntax-match s
+      [(_ given ...)
+       (let ([roots nil] [mounts nil] [k u32 0])
+         (for-each (lambda ([p datum])
+                     (let ([l (syntax->list p)])
+                       (unless (and (!= l 0) (== (length l) 2) (string? (syntax-e (car l))))
+                         (raise-syntax-error 'attach "expected [\"id\" (component ([parameter value] ...))]" p))
+                       (let ([mount (datum->syntax #'here (string->symbol (format-message "mount~a" `(,(make-integer k)))) 0)])
+                         (set! roots (cons #`(ui-root #,mount (attach-node #,(car l)) #,(cadr l)) roots))
+                         (set! mounts (cons #`(#,mount) mounts))
+                         (+= k 1))))
+                   given)
+         (when (null? roots) (raise-syntax-error 'attach "expected at least one [\"id\" (component ...)]" s))
+         #`(begin
+             #,@(reverse roots)
+             (define (main)
+               (attach-start!)
+               #,@(reverse mounts)
+               (dom-flush!))))])))
+
+(define-syntax attach attach-form)

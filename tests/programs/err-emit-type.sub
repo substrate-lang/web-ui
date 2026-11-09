@@ -1,0 +1,25 @@
+;; A component that emits an event of a type other than the one it declares, which traps.
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
+(provide main)
+
+(struct counter-state [count i32])
+(variant counter-message [up])
+(variant counter-event [changed [count i32]])
+(variant other-event [moved])
+
+(define (counter-update [s (ptr counter-state)] [e (ptr counter-message)]) (emit! moved))
+
+(component (counter)
+  #:state [s counter-state]
+  #:messages counter-message
+  #:update counter-update
+  #:events counter-event
+  (button ([on click up]) "+"))
+
+(ui-root mount-counter 0 (counter))
+
+(define (main)
+  (mount-counter)
+  (trace-patches!)
+  (trace-fire! (trace-listener 0)))

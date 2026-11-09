@@ -1,5 +1,5 @@
 (package web-ui
   (version "0.10.0")
   (substrate "0.10.0")
-  (exports examples/counter examples/rows trace ui web)
+  (exports examples/counter examples/rows trace ui)
   (tests (browser)))

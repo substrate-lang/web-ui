@@ -1,0 +1,107 @@
+;; Components: instances with their own state, parameters from their parent, events their parent turns into its own
+;; messages, and requests whose answers come back as messages. Each step prints the patches of the drawing after it.
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
+(provide main)
+
+(struct counter-state [count i32])
+(variant counter-message [up [by i32]] [reset])
+(variant counter-event [changed [count i32]])
+
+(define (counter-update [s (ptr counter-state)] [e (ptr counter-message)])
+  (match e
+    [(up by) (+= (-> s count) by) (emit! (changed (-> s count)))]
+    [reset (set! (-> s count) 0) (emit! (changed 0))]))
+
+(component (counter [step i32])
+  #:state [s counter-state]
+  #:messages counter-message
+  #:update counter-update
+  #:events counter-event
+  (p (button ([on click (up step)]) "+") (int (-> s count)) (button ([on click reset]) "reset")))
+
+(struct loader-state [text string])
+(variant loader-message [answered [n i32]] [fed [n i32]])
+
+;; The loader's tags, which the steps below answer as the host would.
+(define answer (ptr void) 0)
+(define feed (ptr void) 0)
+
+(define (answered! [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32]) (send! (answered value)))
+
+(define (fed! [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32]) (send! (fed value)))
+
+(define (loader-init [s (ptr loader-state)])
+  (set! (-> s text) "waiting")
+  (set! answer (request! answered!))
+  (set! feed (subscribe! fed!)))
+
+(define (loader-update [s (ptr loader-state)] [e (ptr loader-message)])
+  (match e
+    [(answered n) (set! (-> s text) (if (== n 42) "answered 42" "answered"))]
+    [(fed n) (set! (-> s text) (if (== n 7) "fed 7" "fed"))]))
+
+(component (loader)
+  #:state [s loader-state]
+  #:messages loader-message
+  #:update loader-update
+  #:init loader-init
+  (p ([class "loader"]) (text (-> s text))))
+
+(struct totals-state [left i32] [right i32] [step i32] [shown bool])
+(variant totals-message [left-changed [n i32]] [right-changed [n i32]] [bigger] [toggle])
+
+(define (totals-update [s (ptr totals-state)] [e (ptr totals-message)])
+  (match e
+    [(left-changed n) (set! (-> s left) n)]
+    [(right-changed n) (set! (-> s right) n)]
+    [bigger (+= (-> s step) 10)]
+    [toggle (set! (-> s shown) (not (-> s shown)))]))
+
+(define (totals-init [s (ptr totals-state)])
+  (set! (-> s step) 1)
+  (set! (-> s shown) #t))
+
+(component (totals)
+  #:state [s totals-state]
+  #:messages totals-message
+  #:update totals-update
+  #:init totals-init
+  (counter ([step (-> s step)] [on changed left-changed]))
+  (when (-> s shown)
+    (counter ([step 2] [on changed right-changed]))
+    (loader))
+  (p "total " (int (+ (-> s left) (-> s right))))
+  (button ([on click bigger]) "bigger")
+  (button ([on click toggle]) "toggle"))
+
+(ui-root mount-totals 0 (totals))
+
+(define (step [what string])
+  (printf "~a\n" what))
+
+(define (heard [tag (ptr void)] [value i32])
+  ((-> (cast (ptr event-head) tag) handle) 11 1 0 tag value))
+
+(define (main)
+  (ui-flush-with! trace-patches!)
+  (step "mount")
+  (mount-totals)
+  (trace-patches!)
+  (let ([left-up (trace-listener 0)] [right-up (trace-listener 2)] [bigger (trace-listener 4)] [toggle (trace-listener 5)])
+    (step "the left counter goes up by 1")
+    (trace-fire! left-up)
+    (step "the step becomes 11")
+    (trace-fire! bigger)
+    (step "the left counter goes up by 11")
+    (trace-fire! left-up)
+    (step "the right counter goes up by 2")
+    (trace-fire! right-up)
+    (step "the loader's request is answered")
+    (heard answer 42)
+    (step "the loader's subscription brings an event")
+    (heard feed 7)
+    (step "the right counter and the loader are removed")
+    (trace-fire! toggle)
+    (step "the loader's subscription brings an event after the loader is gone")
+    (heard feed 8)))

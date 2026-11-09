@@ -1,0 +1,15 @@
+;; A component given a parameter it does not have.
+(require-unqualified web-ui/ui)
+
+(struct counter-state [count i32])
+
+(component (counter [step i32])
+  #:state [s counter-state]
+  (p (int (-> s count))))
+
+(struct page-state [n i32])
+
+(component (page)
+  #:state [s page-state]
+  (counter ([step 1] [stepp 2])))
+(define (main) 0)

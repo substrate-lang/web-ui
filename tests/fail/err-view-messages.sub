@@ -1,0 +1,19 @@
+;; A view whose listeners send one type of message, used in a component with another.
+(require-unqualified web-ui/ui)
+
+(variant row-message [picked])
+(messages row-message)
+
+(view (row) (li ([on click picked]) "row"))
+
+(struct list-state [n i32])
+(variant list-message [cleared])
+
+(define (list-update [s (ptr list-state)] [e (ptr list-message)]) 0)
+
+(component (rows)
+  #:state [s list-state]
+  #:messages list-message
+  #:update list-update
+  (ul (row)))
+(define (main) 0)

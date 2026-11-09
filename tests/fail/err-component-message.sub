@@ -1,0 +1,22 @@
+;; A parent turning an event into a message whose fields differ from the event's.
+(require-unqualified web-ui/ui)
+
+(struct counter-state [count i32])
+(variant counter-event [changed [count i32]])
+
+(component (counter)
+  #:state [s counter-state]
+  #:events counter-event
+  (p (int (-> s count))))
+
+(struct page-state [total i32])
+(variant page-message [named [name string]])
+
+(define (page-update [s (ptr page-state)] [e (ptr page-message)]) 0)
+
+(component (page)
+  #:state [s page-state]
+  #:messages page-message
+  #:update page-update
+  (counter ([on changed named])))
+(define (main) 0)
