@@ -136,9 +136,9 @@
 
 (typedef ui-render (fn ()))
 
-;; The instance whose code is running, and how deep the deliveries of messages are.
+;; The instance whose code is running, and how many components' code is running, one inside another.
 (define current (ptr ui-instance) 0)
-(define delivering u32 0)
+(define depth u32 0)
 
 (define roots (array ui-render 32))
 (define root-count u32 0)
@@ -147,9 +147,12 @@
 (define (ui-enter! [i (ptr ui-instance)]) -> (ptr ui-instance)
   (let ([outer current])
     (set! current i)
+    (+= depth 1)
     outer))
 
-(define (ui-leave! [outer (ptr ui-instance)]) (set! current outer))
+(define (ui-leave! [outer (ptr ui-instance)])
+  (set! current outer)
+  (-= depth 1))
 
 (define (ui-instance-start! [i (ptr ui-instance)] [state (ptr void)] [update (fn ((ptr void) (ptr void)))]
                             [trapped (fn ((ptr void) string))] [messages string] [events string]
@@ -182,16 +185,13 @@
     (set! (-> h call) call)
     (set! (-> h parent) current)))
 
-;; Gives the message to the instance's update, then draws the page again once no update is running.
+;; Gives the message to the instance's update, then draws the page again once no component's code is running.
 (define (ui-deliver [i (ptr ui-instance)] [message (ptr void)])
   (when (and (!= i 0) (!= (-> i update) 0))
-    (let ([outer current])
-      (set! current i)
-      (+= delivering 1)
+    (let ([outer (ui-enter! i)])
       ((-> i update) (-> i state) message)
-      (-= delivering 1)
-      (set! current outer)
-      (when (== delivering 0) (ui-render!)))))
+      (ui-leave! outer)
+      (when (== depth 0) (ui-render!)))))
 
 (define (ui-root! [render ui-render])
   (when (== root-count 32) (host-trap "ui: more than 32 components are attached"))
@@ -247,16 +247,13 @@
 (define (ui-request-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
   (let* ([r (cast (ptr ui-request) tag)] [i (-> r instance)] [once (-> r once)])
     (when (!= i 0)
-      (let ([outer current])
-        (set! current i)
-        (+= delivering 1)
+      (let ([outer (ui-enter! i)])
         ((-> r run) source kind id tag value)
-        (-= delivering 1)
-        (set! current outer)))
+        (ui-leave! outer)))
     (when once
       (when (!= i 0) (unlink! i r))
       (free r))
-    (when (and (!= i 0) (== delivering 0)) (ui-render!))))
+    (when (and (!= i 0) (== depth 0)) (ui-render!))))
 
 (define (unlink! [i (ptr ui-instance)] [r (ptr ui-request)])
   (if (== (-> i requests) r)
@@ -294,7 +291,7 @@
 ;; A trap goes to the trap handler of the instance whose code was running, or of the nearest instance it is in.
 (define (ui-trapped [why string])
   (let ([i current])
-    (set! delivering 0)
+    (set! depth 0)
     (set! current 0)
     (while (and (!= i 0) (== (-> i trapped) 0)) (set! i (-> i parent)))
     (when (== i 0)
@@ -929,8 +926,8 @@
             (fail message (format "the message ~a takes ~a, but the event ~a carries ~a"
                                   `(,(syntax-e message) ,taken ,(syntax-e event) ,carried)))))
         (let* ([vars (for/list ([x (cdr event-case)]) (literal (string->symbol (format-message "v~a" `(,(syntax-e (car x)))))))]
-               [pattern (if (null? vars) event #`(#,event #,@vars))]
-               [made (if (null? (cdr message-case)) message #`(#,message #,@vars))])
+               [pattern (if (null? vars) (car event-case) #`(#,(car event-case) #,@vars))]
+               [made (if (null? (cdr message-case)) (car message-case) #`(#,(car message-case) #,@vars))])
           (set! fills
                 (cons #`(define (#,fn [parent (ptr void)] [e (ptr void)])
                           (match (cast (ptr #,events) e)
