@@ -18,7 +18,8 @@
   #:messages counter-message
   #:update counter-update
   #:events counter-event
-  (p (button ([on click (up step)]) "+") (int (-> s count)) (button ([on click reset]) "reset")))
+  #:style ".counter { margin: 0 }"
+  (p ([class "counter"]) (button ([on click (up step)]) "+") (int (-> s count)) (button ([on click reset]) "reset")))
 
 (struct loader-state [text string])
 (variant loader-message [answered [n i32]] [fed [n i32]])

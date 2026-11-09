@@ -494,8 +494,8 @@
       input invalid keydown keypress keyup load loadeddata loadedmetadata mousedown mouseenter mouseleave mousemove
       mouseout mouseover mouseup paste pause play playing pointercancel pointerdown pointerenter pointerleave pointermove
       pointerout pointerover pointerup progress reset scroll scrollend seeked seeking select submit timeupdate toggle
-      touchcancel touchend touchmove touchstart transitioncancel transitionend transitionrun transitionstart volumechange
-      wheel))
+      touchcancel touchend touchmove touchstart transitioncancel transitionend transitionrun transitionstart visibility
+      volumechange wheel))
 
   (define window-events datum '(frame resize hashchange popstate online offline visibilitychange pointerlockchange pointerlockerror))
 
@@ -732,7 +732,8 @@
                   [(== d 'movement-x) (cons #'i32 #'(cast i32 (ui-event-number 3)))]
                   [(== d 'movement-y) (cons #'i32 #'(cast i32 (ui-event-number 4)))]
                   [(== d 'button) (cons #'i32 #'(cast i32 (ui-event-number 5)))]
-                  [else (fail x '"unknown event data: expected (event value), (event key), (event shift), (event control), (event alt), (event meta), (event checked), (event locked), (event time), (event x), (event y), (event movement-x), (event movement-y) or (event button)")]))
+                  [(== d 'visible) (cons #'bool #'(ui-event-truth 64))]
+                  [else (fail x '"unknown event data: expected (event value), (event key), (event shift), (event control), (event alt), (event meta), (event checked), (event locked), (event time), (event x), (event y), (event movement-x), (event movement-y), (event button) or (event visible)")]))
           0)))
 
   (define (event-fill [m datum]) -> datum
@@ -1017,15 +1018,16 @@
       (raise-syntax-error who (datum->string (format "the ~a must be a variant type" `(,what))) t)))
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:free f, #:events TYPE and #:trapped f. Its instances each have a state, which the children see as s.
+  ;; #:init f, #:free f, #:events TYPE, #:trapped f and #:style css. Its instances each have a state, which the children
+  ;; see as s. The stylesheet is added to the page when the first instance is mounted.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
        (let ([options nil] [children rest])
          (while (and (pair? children) (keyword? (syntax-e (car children))))
            (let ([word (syntax-e (car children))])
-             (unless (!= (memq word '(#:state #:messages #:update #:init #:free #:events #:trapped)) 0)
-               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:free, #:events and #:trapped" (car children)))
+             (unless (!= (memq word '(#:state #:messages #:update #:init #:free #:events #:trapped #:style)) 0)
+               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:free, #:events, #:trapped and #:style" (car children)))
              (unless (pair? (cdr children)) (raise-syntax-error 'component "expected a value after the option" (car children)))
              (unless (== (assq word options) 0) (raise-syntax-error 'component "this option is given twice" (car children)))
              (set! options (cons (cons word (cadr children)) options))
@@ -1033,7 +1035,7 @@
          (let* ([state (option-of options '#:state)] [state-l (if (== state 0) 0 (syntax->list state))]
                 [messages (option-of options '#:messages)] [update (option-of options '#:update)]
                 [init (option-of options '#:init)] [free (option-of options '#:free)] [events (option-of options '#:events)]
-                [trapped (option-of options '#:trapped)])
+                [trapped (option-of options '#:trapped)] [style (option-of options '#:style)])
            (unless (and (!= state-l 0) (== (length state-l) 2) (identifier? (car state-l)))
              (raise-syntax-error 'component "a component needs #:state [name TYPE]" (if (== state 0) s state)))
            (when (and (== messages 0) (!= update 0)) (raise-syntax-error 'component "#:update needs #:messages" update))
@@ -1044,10 +1046,12 @@
                   [instance (component-name name '"instance")] [mount (component-name name '"mount")]
                   [update-fn (component-name name '"update")] [unmount (component-name name '"unmount")]
                   [adapter (component-name name '"message")] [trap (component-name name '"trap")]
+                  [styled (component-name name '"styled")]
                   [names (for/list ([p parameter]) (car (syntax->list p)))])
              #`(begin
                  (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages) #,@children)
                  (struct #,instance [head ui-instance] [state #,t] [view #,(component-name view '"state")])
+                 #,@(if (== style 0) nil `(,#`(define #,styled bool #f)))
                  #,@(if (== messages 0)
                         nil
                         `(,#`(define (#,adapter [state (ptr void)] [message (ptr void)])
@@ -1061,6 +1065,11 @@
                                        #,(if (== messages 0) #'0 adapter) #,(if (== trapped 0) #'0 trap)
                                        #,(type-text messages) #,(type-text events) heard heard-count)
                    (memset (& (-> i state)) 0 (sizeof #,t))
+                   #,@(if (== style 0)
+                          nil
+                          `(,#`(unless #,styled
+                                 (set! #,styled #t)
+                                 (dom-stylesheet! #,style))))
                    (let ([outer (ui-enter! (& (-> i head)))])
                      #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
                      (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
