@@ -85,8 +85,7 @@
 
 ;; ---- run-time support: event listeners ----
 
-;; A listener's slot: the event's tag, the listener's node, the function that fills the message with the event's data,
-;; the instance the message goes to, and the message.
+;; A listener's slot. It is also the tag of the listener's event.
 (struct ui-listener
   [handle handler] [node u32] [fill (fn ((ptr void) u32))] [instance (ptr ui-instance)] [message (ptr void)])
 
@@ -134,8 +133,7 @@
 
 ;; ---- run-time support: components ----
 
-;; An instance's header: its component's update and trap handler, its state, the instance it is in, the names of its
-;; message and event types, its parent's listeners for its events, and its requests.
+;; The header that every instance begins with.
 (struct ui-instance
   [update (fn ((ptr void) (ptr void)))] [trapped (fn ((ptr void) string))] [state (ptr void)] [parent (ptr ui-instance)]
   [messages string] [events string] [heard (ptr ui-parent-listener)] [heard-count u32] [requests (ptr ui-request)])
@@ -147,7 +145,6 @@
 
 (typedef ui-render (fn ()))
 
-;; The instance whose code is running, and how many components' code is running, one inside another.
 (define current (ptr ui-instance) 0)
 (define depth u32 0)
 
@@ -179,7 +176,7 @@
   (set! (-> i requests) 0)
   (when (!= trapped 0) (trap-handler! ui-trapped)))
 
-;; An ended instance's requests drop their events: one from request! is freed when its event comes, and one from
+;; An ended instance's requests drop their events. One from request! is freed when its event comes, and one from
 ;; subscribe! is kept.
 (define (ui-instance-end! [i (ptr ui-instance)])
   (let ([r (-> i requests)])
@@ -196,7 +193,6 @@
     (set! (-> h call) call)
     (set! (-> h parent) current)))
 
-;; Gives the message to the instance's update, then draws the page again once no component's code is running.
 (define (ui-deliver [i (ptr ui-instance)] [message (ptr void)])
   (when (and (!= i 0) (!= (-> i update) 0))
     (let ([outer (ui-enter! i)])
@@ -299,7 +295,6 @@
 
 ;; ---- run-time support: traps ----
 
-;; A trap goes to the trap handler of the instance whose code was running, or of the nearest instance it is in.
 (define (ui-trapped [why string])
   (let ([i current])
     (set! depth 0)
@@ -523,7 +518,6 @@
 
   (define (view-names [v datum]) -> datum (syntax->list (cadr v)))
 
-  ;; The message type of a view's listeners, or 0 when it has none.
   (define (view-messages [v datum]) -> datum (let ([m (cadddr v)]) (if (identifier? m) m 0)))
 
   (define (shape [x datum]) -> datum (syntax->datum (datum->syntax #'here x 0)))
@@ -895,7 +889,7 @@
         (set! attributes (cdr attributes)))
       found))
 
-  ;; (c ([parameter value] ... [on event message] ...)): the values in the order of c's parameters, then the listeners.
+  ;; (c ([parameter value] ... [on event message] ...))
   (define (component-attributes [f datum] [l datum] [c datum]) -> datum
     (let ([params (syntax->list (caddr c))] [given nil] [listeners nil]
           [attributes (cond [(null? (cdr l)) nil]
@@ -923,7 +917,6 @@
                 (cadr found)))
             (reverse listeners))))
 
-  ;; Defines the function that turns an event of the component into a message of this view, and gives its name.
   (define (parent-listener! [l datum] [c datum] [al datum]) -> datum
     (let* ([events (cadddr c)] [event (cadr al)] [message (caddr al)]
            [fn (named (format "heard~a" `(,(make-integer (length fills)))))])
@@ -979,8 +972,8 @@
     (syntax-match s
       [(_ (? identifier? m)) #`(define-syntax #,(message-type-name s) (quote-syntax #,m))]))
 
-  ;; (view (v parameter ...) child ...), or (view (v parameter ...) #:messages TYPE child ...) to give its listeners a
-  ;; message type other than the module's; #:messages #f gives it none.
+  ;; (view (v parameter ...) child ...). #:messages TYPE after the parameters gives the view's listeners a message type
+  ;; other than the module's, and #:messages #f gives them none.
   (define (view-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? v) parameter ...) child ...)
@@ -1104,7 +1097,6 @@
   (define (component-value [parts datum]) -> datum
     (let ([l (syntax->list parts)]) `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l))))
 
-  ;; The variant type of a case's constructor: (case value ...) or case.
   (define (constructed-type [who datum] [e datum]) -> datum
     (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
            [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
@@ -1124,8 +1116,8 @@
                #`(let ([message #,t #,e]) (ui-send #,(type-text t) (cast (ptr void) (& message)))))]
       [_ (raise-syntax-error 'send! "expected (send! (message value ...))" s)]))
 
-  ;; (ui-root mount node (c ([parameter value] ...))) defines mount, which puts an instance of c in the node and makes it
-  ;; a root, which each drawing of the page updates.
+  ;; (ui-root mount node (c ([parameter value] ...))) defines mount. mount puts an instance of c in the node and makes
+  ;; it a root, and each drawing of the page updates the roots.
   (define (root-form [s datum]) -> datum
     (syntax-match s
       [(_ (? identifier? mount) node call)

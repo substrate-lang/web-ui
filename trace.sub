@@ -10,7 +10,6 @@
 
 (define (trace-listener [n u32]) -> (ptr void) (cast (ptr void) (@ listeners n)))
 
-;; Delivers a listener's message, as its event would.
 (define (trace-fire! [listener (ptr void)]) (ui-listener-heard 1 1 0 listener 0))
 
 (define (number [n u32]) (printf "~a" n))
