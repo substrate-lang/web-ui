@@ -52,7 +52,7 @@
 (define a-board board.state)
 
 (define (event-text [path string]) -> string (if (== path "key") "ArrowUp" ""))
-(define (node-is [node u32] [name string]) -> bool #f)
+(define (node-is [node u32] [from u32] [path string]) -> bool #f)
 (define (event-number [path string]) -> f64
   (cond
     [(== path "timeStamp") 1234.5]

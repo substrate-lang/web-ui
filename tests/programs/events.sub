@@ -30,7 +30,7 @@
 (define (event-number [path string]) -> f64
   (cond [(== path "shiftKey") (truth 1)] [(== path "metaKey") (truth 8)] [(== path "target.checked") (truth 16)]
         [(== path "deltaY") -120.0] [else 0.0]))
-(define (node-is [node u32] [name string]) -> bool #f)
+(define (node-is [node u32] [from u32] [path string]) -> bool #f)
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))

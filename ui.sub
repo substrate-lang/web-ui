@@ -6,7 +6,7 @@
 (provide view messages component emit! send! ui-root request! subscribe! unsubscribe!
          ui-text-set! ui-text-slot! ui-attr-set! ui-attr-slot! ui-int-set! ui-int-slot! ui-truth-set! ui-truth-slot!
          ui-number-set! ui-number-slot! ui-focus-slot! ui-scroll-end-slot! ui-pointer-lock-slot! ui-read-with!
-         ui-event-text ui-event-truth ui-event-number ui-event-is ui-listener ui-listen ui-heard ui-listener-heard
+         ui-event-text ui-event-truth ui-event-number ui-is ui-listener ui-listen ui-heard ui-listener-heard
          ui-instance ui-parent-listener ui-instance-start! ui-instance-end! ui-enter! ui-leave! ui-hear! ui-deliver
          ui-emit ui-send ui-root! ui-render! ui-flush-with!
          ui-row ui-rows ui-each! ui-each-clear!)
@@ -110,9 +110,10 @@
 ;; The reads of the current event and of the page, by name (std/web/dom.sub).
 (define event-texts (fn (string) -> string) 0)
 (define event-numbers (fn (string) -> f64) 0)
-(define node-is (fn (u32 string) -> bool) 0)
+(define node-is (fn (u32 u32 string) -> bool) 0)
 
-(define (ui-read-with! [texts (fn (string) -> string)] [numbers (fn (string) -> f64)] [is (fn (u32 string) -> bool)])
+(define (ui-read-with! [texts (fn (string) -> string)] [numbers (fn (string) -> f64)]
+                       [is (fn (u32 u32 string) -> bool)])
   (set! event-texts texts)
   (set! event-numbers numbers)
   (set! node-is is))
@@ -127,9 +128,9 @@
 
 (define (ui-event-truth [path string]) -> bool (!= (ui-event-number path) 0.0))
 
-(define (ui-event-is [node u32] [name string]) -> bool
+(define (ui-is [node u32] [from u32] [path string]) -> bool
   (let ([f node-is])
-    (and (!= f 0) (f node name))))
+    (and (!= f 0) (f node from path))))
 
 ;; ---- run-time support: components ----
 
@@ -737,7 +738,7 @@
               [(== d 'alt) (cons #'bool #'(ui-event-truth "altKey"))]
               [(== d 'meta) (cons #'bool #'(ui-event-truth "metaKey"))]
               [(== d 'checked) (cons #'bool #'(ui-event-truth "target.checked"))]
-              [(== d 'locked) (cons #'bool #'(ui-event-is node "pointerLockElement"))]
+              [(== d 'locked) (cons #'bool #'(ui-is node dom-document "pointerLockElement"))]
               [(== d 'time) (cons #'f64 #'(ui-event-number "timeStamp"))]
               [(== d 'x) (cons #'i32 #'(cast i32 (ui-event-number "offsetX")))]
               [(== d 'y) (cons #'i32 #'(cast i32 (ui-event-number "offsetY")))]
