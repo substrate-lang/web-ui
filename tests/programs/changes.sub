@@ -1,4 +1,5 @@
-;; A view put in a node, with its own stylesheet. Each step prints the patches of the drawing after it.
+;; A view put in a node, with its own stylesheet; a component mounted again when its key changes; and a component that
+;; works out its state again when its parameter changes. Each step prints the patches of the drawing after it.
 (require-unqualified web-ui/ui)
 (require-unqualified web-ui/trace)
 (provide main)
@@ -9,10 +10,72 @@
 
 (ui-root mount-banner 0 (banner "Hello"))
 
+(struct tally-state [count i32])
+(variant tally-message [bump])
+
+(define (tally-update [s (ptr tally-state)] [m (ptr tally-message)]) (match m [bump (+= (-> s count) 1)]))
+
+(component (tally [label string])
+  #:state [s tally-state]
+  #:messages tally-message
+  #:update tally-update
+  (p (text label) " " (int (-> s count)) (button ([on click bump]) "+")))
+
+(struct sized-state [length i64] [times i32])
+
+(define (sized-changed [s (ptr sized-state)] [name string])
+  (set! (-> s length) (cast i64 (-> name length)))
+  (+= (-> s times) 1))
+
+(component (sized [name string])
+  #:state [s sized-state]
+  #:init sized-changed
+  #:changed sized-changed
+  (p (text name) " has " (int (-> s length)) " letters, worked out " (int (-> s times)) " times"))
+
+(struct holder-state [user u64] [name string] [ticks i32])
+(variant holder-message [next-user] [rename] [tick])
+
+(define (holder-update [s (ptr holder-state)] [m (ptr holder-message)])
+  (match m
+    [next-user (+= (-> s user) 1)]
+    [rename (set! (-> s name) "Grace")]
+    [tick (+= (-> s ticks) 1)]))
+
+(define (holder-init [s (ptr holder-state)])
+  (set! (-> s user) 1)
+  (set! (-> s name) "Ada"))
+
+(component (holder)
+  #:state [s holder-state]
+  #:messages holder-message
+  #:update holder-update
+  #:init holder-init
+  (tally ([label "user"]) #:key (-> s user))
+  (sized ([name (-> s name)]))
+  (button ([on click next-user]) "next user")
+  (button ([on click rename]) "rename")
+  (button ([on click tick]) "tick")
+  (int (-> s ticks)))
+
+(ui-root mount-holder 0 (holder))
+
 (define (step [what string]) (printf "~a\n" what))
 
 (define (main)
   (ui-flush-with! trace-patches!)
   (step "the banner is mounted, with its stylesheet")
   (mount-banner)
-  (trace-patches!))
+  (trace-patches!)
+  (step "the holder is mounted")
+  (mount-holder)
+  (trace-patches!)
+  (let ([bump (trace-listener 0)] [next-user (trace-listener 1)] [rename (trace-listener 2)] [tick (trace-listener 3)])
+    (step "the tally counts 1")
+    (trace-fire! bump)
+    (step "the same key and name change nothing but the ticks")
+    (trace-fire! tick)
+    (step "the next user mounts the tally again, from 0")
+    (trace-fire! next-user)
+    (step "the new name is worked out again")
+    (trace-fire! rename)))

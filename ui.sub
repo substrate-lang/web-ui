@@ -945,21 +945,50 @@
                       fills))
           fn))))
 
+  ;; The key of (c ([parameter value] ...) #:key k), or 0.
+  (define (key-of [l datum]) -> datum
+    (while (and (pair? l) (pair? (cdr l)) (not (null? (cddr l)))) (set! l (cdr l)))
+    (if (and (pair? l) (pair? (cdr l)) (== (syntax-e (car l)) '#:key)) (cadr l) 0))
+
+  (define (without-key [l datum]) -> datum
+    (if (or (null? l) (and (== (syntax-e (car l)) '#:key) (pair? (cdr l)) (null? (cddr l))))
+        nil
+        (cons (car l) (without-key (cdr l)))))
+
+  ;; (c ([parameter value] ...) #:key k) mounts the component again, with a new state, when the u64 k changes.
   (define (component-call! [b (ptr block)] [f datum] [l datum] [c datum])
-    (let* ([names (syntax->list (cadr c))] [parsed (component-attributes f l c)] [values (car parsed)]
-           [listeners (cdr parsed)] [n (length listeners)])
+    (let* ([key (key-of l)] [names (syntax->list (cadr c))] [parsed (component-attributes f (without-key l) c)]
+           [values (car parsed)] [listeners (cdr parsed)] [n (length listeners)])
       (html-comment! (html-of b) "a")
       (let* ([anchor (node! b)] [instance (field! b (car names))]
              [heard datum (if (== n 0) 0 (field! b #`(array ui-parent-listener #,(number n))))]
-             [k u32 0])
+             [hears nil] [k u32 0])
         (for-each (lambda ([al datum])
-                    (mount! b #`(ui-hear! (cast (ptr ui-parent-listener) (& (-> bs #,heard))) #,(number k) #,(parent-listener! l c al)))
+                    (set! hears (cons #`(ui-hear! (cast (ptr ui-parent-listener) (& (-> bs #,heard))) #,(number k)
+                                                  #,(parent-listener! l c al))
+                                      hears))
                     (+= k 1))
                   listeners)
-        (mount! b #`(#,(cadr names) (& (-> bs #,instance)) 0 #,anchor
-                                    #,(if (== n 0) #'0 #`(cast (ptr ui-parent-listener) (& (-> bs #,heard)))) #,(number n)
-                                    #,@values))
-        (update! b #`(#,(caddr names) (& (-> bs #,instance)) #,@values))
+        (let ([mounting #`(begin
+                            #,@(reverse hears)
+                            (#,(cadr names) (& (-> bs #,instance)) 0 #,anchor
+                                            #,(if (== n 0) #'0 #`(cast (ptr ui-parent-listener) (& (-> bs #,heard))))
+                                            #,(number n) #,@values))]
+              [updating #`(#,(caddr names) (& (-> bs #,instance)) #,@values)])
+          (if (== key 0)
+              (begin
+                (mount! b mounting)
+                (update! b updating))
+              (let ([slot (field! b #'u64)])
+                (mount! b #`(set! (-> bs #,slot) #,key))
+                (mount! b mounting)
+                (update! b #`(let ([key u64 #,key])
+                               (if (== key (-> bs #,slot))
+                                   #,updating
+                                   (begin
+                                     (set! (-> bs #,slot) key)
+                                     (#,(cadddr names) (& (-> bs #,instance)) #t)
+                                     #,mounting)))))))
         (unmount! b #`(#,(cadddr names) (& (-> bs #,instance)) #f)))))
 
   (define (cddddr [l datum]) -> datum (cdr (cdddr l)))
@@ -1030,40 +1059,47 @@
       (raise-syntax-error who (datum->string (format "the ~a must be a variant type" `(,what))) t)))
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:free f, #:events TYPE, #:trapped f and #:style css. Its instances each have a state, which the children
-  ;; see as s. The stylesheet is added to the page when the first instance is mounted.
+  ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f and #:style css. Its instances each have a state, which
+  ;; the children see as s. #:init runs when an instance is mounted, and #:changed before a drawing whose parameters are
+  ;; not the ones of the drawing before, compared bit for bit; each takes the state and the parameters. The stylesheet
+  ;; is added to the document when the first instance is mounted.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
        (let ([options nil] [children rest])
          (while (and (pair? children) (keyword? (syntax-e (car children))))
            (let ([word (syntax-e (car children))])
-             (unless (!= (memq word '(#:state #:messages #:update #:init #:free #:events #:trapped #:style)) 0)
-               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:free, #:events, #:trapped and #:style" (car children)))
+             (unless (!= (memq word '(#:state #:messages #:update #:init #:changed #:free #:events #:trapped #:style)) 0)
+               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:changed, #:free, #:events, #:trapped and #:style" (car children)))
              (unless (pair? (cdr children)) (raise-syntax-error 'component "expected a value after the option" (car children)))
              (unless (== (assq word options) 0) (raise-syntax-error 'component "this option is given twice" (car children)))
              (set! options (cons (cons word (cadr children)) options))
              (set! children (cddr children))))
          (let* ([state (option-of options '#:state)] [state-l (if (== state 0) 0 (syntax->list state))]
                 [messages (option-of options '#:messages)] [update (option-of options '#:update)]
-                [init (option-of options '#:init)] [free (option-of options '#:free)] [events (option-of options '#:events)]
-                [trapped (option-of options '#:trapped)] [style (option-of options '#:style)])
+                [init (option-of options '#:init)] [changed (option-of options '#:changed)] [free (option-of options '#:free)]
+                [events (option-of options '#:events)] [trapped (option-of options '#:trapped)]
+                [style (option-of options '#:style)])
            (unless (and (!= state-l 0) (== (length state-l) 2) (identifier? (car state-l)))
              (raise-syntax-error 'component "a component needs #:state [name TYPE]" (if (== state 0) s state)))
            (when (and (== messages 0) (!= update 0)) (raise-syntax-error 'component "#:update needs #:messages" update))
            (when (and (!= messages 0) (== update 0)) (raise-syntax-error 'component "#:messages needs #:update" messages))
+           (when (and (!= changed 0) (null? parameter)) (raise-syntax-error 'component "#:changed needs parameters" changed))
            (unless (== messages 0) (variant! 'component messages '"messages"))
            (unless (== events 0) (variant! 'component events '"events"))
            (let* ([s-name (car state-l)] [t (cadr state-l)] [view (component-name name '"view")]
                   [instance (component-name name '"instance")] [mount (component-name name '"mount")]
                   [update-fn (component-name name '"update")] [unmount (component-name name '"unmount")]
                   [adapter (component-name name '"message")] [trap (component-name name '"trap")]
-                  [names (for/list ([p parameter]) (car (syntax->list p)))])
+                  [names (for/list ([p parameter]) (car (syntax->list p)))]
+                  [types (for/list ([p parameter]) (cadr (syntax->list p)))]
+                  [lasts (if (== changed 0) nil (for/list ([n names]) (component-name n '"last")))])
              #`(begin
                  (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages)
                        #,@(if (== style 0) nil `(,#'#:style ,style))
                        #,@children)
-                 (struct #,instance [head ui-instance] [state #,t] [view #,(component-name view '"state")])
+                 (struct #,instance [head ui-instance] [state #,t] [view #,(component-name view '"state")]
+                         #,@(for/list ([l lasts] [ty types]) #`[#,l #,ty]))
                  #,@(if (== messages 0)
                         nil
                         `(,#`(define (#,adapter [state (ptr void)] [message (ptr void)])
@@ -1077,12 +1113,22 @@
                                        #,(if (== messages 0) #'0 adapter) #,(if (== trapped 0) #'0 trap)
                                        #,(type-text messages) #,(type-text events) heard heard-count)
                    (memset (& (-> i state)) 0 (sizeof #,t))
+                   #,@(for/list ([l lasts] [n names]) #`(set! (-> i #,l) #,n))
                    (let ([outer (ui-enter! (& (-> i head)))])
                      #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
                      (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
                      (ui-leave! outer)))
                  (define (#,update-fn [i (ptr #,instance)] #,@parameter)
                    (let ([outer (ui-enter! (& (-> i head)))])
+                     #,@(if (== changed 0)
+                            nil
+                            `(,#`(when (or #,@(for/list ([l lasts] [n names] [ty types])
+                                                 #`(let ([now #,ty #,n])
+                                                     (!= (memcmp (cast (ptr u8) (& (-> i #,l))) (cast (ptr u8) (& now))
+                                                                 (sizeof #,ty))
+                                                         0))))
+                                   #,@(for/list ([l lasts] [n names]) #`(set! (-> i #,l) #,n))
+                                   (#,changed (& (-> i state)) #,@names))))
                      (#,(component-name view '"update") (& (-> i view)) (& (-> i state)) #,@names)
                      (ui-leave! outer)))
                  (define (#,unmount [i (ptr #,instance)] [detach bool])

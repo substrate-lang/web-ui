@@ -22,5 +22,6 @@
 (test err-view-messages (expect-compile-error "fail/err-view-messages.sub" "err-view-messages.sub:18:7: error: view: the view row sends messages of the type row-message, but this view's messages are list-message"))
 (test err-truth (expect-compile-error "fail/err-truth.sub" "err-truth.sub:10:7: error: view: hidden is a boolean attribute: write [hidden], or [hidden e] where e is a condition"))
 (test err-window-event (expect-compile-error "fail/err-window-event.sub" "err-window-event.sub:10:23: error: view: unknown event keydwn (to listen for an event that the DOM does not define, write its name as a string: [on-window \"keydwn\" message])"))
+(test err-changed (expect-compile-error "fail/err-changed.sub" "err-changed.sub:10:13: error: component: #:changed needs parameters"))
 (test err-root-view (expect-compile-error "fail/err-root-view.sub" "err-root-view.sub:9:22: error: ui-root: a view put in an element has no component to take its messages"))
 (test err-view-option (expect-compile-error "fail/err-view-option.sub" "err-view-option.sub:4:13: error: view: the options are #:messages TYPE and #:style css"))

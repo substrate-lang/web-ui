@@ -1,0 +1,12 @@
+;; A component with #:changed but no parameters.
+(require-unqualified web-ui/ui)
+
+(struct tally-state [count i32])
+
+(define (changed [s (ptr tally-state)]) 0)
+
+(component (tally)
+  #:state [s tally-state]
+  #:changed changed
+  (p "tally"))
+(define (main) 0)
