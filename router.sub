@@ -1,15 +1,16 @@
-;; The router: the document's URL as a route, a value of a routable type (std/http/routable.sub), kept in step with the
-;; browser's history and given to the components that take routes (#:route). attach starts it. The routes read the path
-;; from the directory of the document's base URL on, so /notes/7/ is /7/ to a page with <base href="/notes/">, and a URL
-;; outside that directory is no route. route-href writes the whole path. A click on a link to a URL that one of the
-;; routes matches navigates in place, unless a key or a mouse button other than the first is held or the link has a
-;; target, a download attribute or rel external. So does a form that submits with GET to the document, to its action's
-;; URL with the form's query, and so do navigate! and Back and Forward. Other URLs are the browser's to load.
+;; The router keeps the document's URL as a route, a value of a routable type (std/http/routable.sub). It keeps the
+;; route in step with the browser's history and gives it to the components that take routes (#:route). attach starts
+;; it. The routes read the path from the directory of the document's base URL on, so a page with <base href="/notes/">
+;; reads /notes/7/ as /7/. A URL outside that directory is no route. route-href writes the whole path.
+;; A click on a link navigates in place when one of the routes matches the link's URL. It does not when a key or a
+;; mouse button other than the first is held, or when the link has a target, a download attribute or rel external. A
+;; form that submits with GET to the document navigates in place the same way, to its action's URL with the form's
+;; query. So do navigate! and Back and Forward. The browser loads other URLs.
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
-;; moves to the start of the document, its title is announced, and the page scrolls to the URL's fragment or its top,
-;; or back to where it was for Back, Forward and a reload. The router's state starts each entry's state: a mark, the
-;; entry's place in the history, and where the page was scrolled. In a copy of web-ui that another copy has joined
-;; (ui.sub), navigating and the route's URL are the other copy's router's.
+;; moves to the start of the document and its title is announced. The page scrolls to the URL's fragment or to its top,
+;; or back to where it was for Back, Forward and a reload. Each entry's state starts with the router's state: a mark,
+;; the entry's place in the history, and where the page was scrolled. In a copy of web-ui that another copy has joined
+;; (ui.sub), navigation and the route's URL go through the other copy's router.
 (require-unqualified "ui.sub")
 (require-unqualified host/events)
 (require-unqualified host/web/history)
@@ -262,8 +263,8 @@
 
 ;; ---- starting ----
 
-;; router-start! reads the URL as a route of the type named t, size bytes long, before attach mounts the roots. m sets
-;; a route to the missing case.
+;; router-start! reads the URL as a route with r, before attach mounts the roots. A route is of the type named t and is
+;; n bytes long. m sets a route to the missing case.
 (define (router-start! [r route-reader] [m route-missing] [n u32] [t string])
   (set! reader r)
   (set! missing m)

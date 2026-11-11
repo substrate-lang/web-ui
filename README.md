@@ -7,4 +7,4 @@ messages and update, and attach puts components and views in elements of the
 document. Given a routable type, attach also starts the router, which keeps the
 URL as a route in step with the browser's history. It is experimental.
 
-    substrate test -A        # the tests, eight of them in Chromium
+    substrate test -A        # the tests, thirteen of them in Chromium

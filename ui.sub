@@ -465,9 +465,9 @@
 
 ;; ---- run-time support: copies ----
 
-;; A component that another copy of web-ui attaches joins this copy to that one before it starts. The attaching copy
-;; gives its event reads, its drawing, its navigator, its route, its titles and its router, and takes this copy's routes
-;; and guards. A component from web-ui 0.10.2 has no ui-join! and joins nothing.
+;; When another copy of web-ui attaches one of this copy's components, it first joins this copy with ui-join!. It gives
+;; this copy its event reads, its drawing, its navigator, its route, its titles and its router. In return it takes this
+;; copy's route listeners and guards. A component from web-ui 0.10.2 has no ui-join!, so it joins nothing.
 (typedef ui-join (fn ((fn (string) -> string) (fn (string) -> f64) (fn (u32 u32 string) -> bool) ui-render ui-render
                       (ptr void) string (fn (string)) (fn (string bool bool (slice u8))) (fn () -> string)
                       (fn () -> string) (fn () -> (slice u8)) ui-render ui-render (fn () -> bool)
@@ -772,7 +772,8 @@
   (define (copy-join [r datum]) -> datum
     (let ([l (if (== (car r) 'ui-view) (cddddr r) (cdr (cddddr r)))]) (if (and (pair? l) (pair? (cdr l))) (cadr l) 0)))
 
-  ;; The code that starts a root made by the copy whose view or component r is, given the start and the render.
+  ;; The code that starts a root, given start, the code that starts its view or component r. When another copy of web-ui
+  ;; made r, the code first joins that copy to this one, if it can.
   (define (root-start [r datum] [start datum]) -> datum
     (cond [(free-identifier=? (copy-root r) #'ui-root-with!)
            `(,start ,#`(ui-root-with! render event-texts event-numbers node-is flush))]
@@ -1400,9 +1401,10 @@
   ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and #:leaving [held? case].
   ;; Its instances each have a state, which the children see as s. #:init runs when an instance is mounted. #:changed
   ;; runs before a drawing whose parameters differ, bit for bit, from those of the drawing before. Both take the state
-  ;; and the parameters. The stylesheet is added to the document when the first instance is mounted. #:route's case, of
-  ;; one route, is sent the route when the instance is mounted and after each navigation. While (held? state) is true,
-  ;; #:leaving's case, of one string, is sent the URL of a navigation that the router stops.
+  ;; and the parameters. The stylesheet is added to the document when the first instance is mounted. #:route names a
+  ;; message case that holds a route. The instance gets that message with the route when it is mounted and after each
+  ;; navigation. While (held? state) is true, the router stops navigations. #:leaving names a case that holds a string,
+  ;; and the instance gets it with the URL of each navigation the router stops.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
