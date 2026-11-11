@@ -1,6 +1,6 @@
 ;; An app with routes (places.sub): links between its pages, one with a parameter, a long page with a fragment, a draft
 ;; that holds the document while it is unsaved, a navigation from an update, a title for each page, and links the router
-;; leaves alone.
+;; leaves alone. Its links work at any base: they come from route-href or are relative.
 (require-unqualified web-ui)
 (require-unqualified std/http/routable)
 (require-unqualified "places.sub")
@@ -28,15 +28,15 @@
   #:leaving [unsaved? stopped]
   (div
     (nav ([style "position: fixed; top: 0; background: white"])
-      (a ([href "/"] [id "home"]) "Home")
+      (a ([href (route-href home)] [id "home"]) "Home")
       (a ([href (route-href (user 7))] [id "user"] ["aria-current" (if (route-current? (user 7)) "page" "false")])
          "User 7")
-      (a ([href "/draft/"] [id "draft"]) "Draft")
-      (a ([href "/long/#end"] [id "long"]) "Long")
-      (a ([href "/nope/"] [id "nope"]) "Nope")
-      (a ([href "/users/5/"] [target "_blank"] [id "blank"]) "Blank")
-      (a ([href "/index.html?full=1"] [rel "nofollow external"] [id "external"]) "External")
-      (a ([href "/users/5/"] [download "page.html"] [id "download"]) "Download"))
+      (a ([href (route-href draft)] [id "draft"]) "Draft")
+      (a ([href "long/#end"] [id "long"]) "Long")
+      (a ([href "nope/"] [id "nope"]) "Nope")
+      (a ([href (route-href (user 5))] [target "_blank"] [id "blank"]) "Blank")
+      (a ([href "index.html?full=1"] [rel "nofollow external"] [id "external"]) "External")
+      (a ([href (route-href (user 5))] [download "page.html"] [id "download"]) "Download"))
     (button ([on click marked]) "Mark")
     (button ([on click three]) "Three")
     (p ([id "mark"]) (text (if (-> s marked) "marked" "")))

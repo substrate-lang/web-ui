@@ -58,7 +58,8 @@
     (syntax-match s
       [(_ given ...)
        (let ([roots nil] [mounts nil] [k u32 0] [items given] [routes datum 0]
-             [reader (datum->syntax #'here 'attach-route-read 0)])
+             [reader (datum->syntax #'here 'attach-route-read 0)]
+             [missing (datum->syntax #'here 'attach-route-missing 0)])
          (while (and (pair? items) (keyword? (syntax-e (car items))))
            (let ([word (syntax-e (car items))])
              (unless (pair? (cdr items)) (raise-syntax-error 'attach "expected a value after the option" (car items)))
@@ -85,12 +86,14 @@
                #,@(if (== routes 0)
                       nil
                       `(,#`(define (#,reader [a (ptr arena)] [url string] [r (ptr void)] [to (ptr buffer)]) -> u32
-                             (#,read a url (cast (ptr #,routes) r) to))))
+                             (#,read a url (cast (ptr #,routes) r) to))
+                        ,#`(define (#,missing [r (ptr void)])
+                             (#,(routes-named routes '"url-missing!") (cast (ptr #,routes) r)))))
                (define (main)
                  (attach-start!)
                  #,@(if (== routes 0)
                         nil
-                        `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes))))
+                        `(,#`(router-start! #,reader #,missing (sizeof #,routes) #,(type-text routes))))
                  #,@(reverse mounts)
                  (ui-titles!)
                  (dom-flush!)

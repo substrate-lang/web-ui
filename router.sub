@@ -1,6 +1,8 @@
 ;; The router: the document's URL as a route, a value of a routable type (std/http/routable.sub), kept in step with the
-;; browser's history and given to the components that take routes (#:route). attach starts it. A click on a link to a
-;; URL that one of the routes matches navigates in place, unless a key or a mouse button other than the first is held or
+;; browser's history and given to the components that take routes (#:route). attach starts it. The routes read the path
+;; from the directory of the document's base URL on, so /notes/7/ is /7/ to a page with <base href="/notes/">, and a URL
+;; outside that directory is no route. route-href writes the whole path. A click on a link to a URL that one of the
+;; routes matches navigates in place, unless a key or a mouse button other than the first is held or
 ;; the link has a target, a download attribute or rel external. So do navigate! and Back and Forward. Other URLs are the
 ;; browser's to load.
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
@@ -17,17 +19,20 @@
 
 (provide router-start! router-mounted! navigate! navigate-replace! navigate-with! navigate-back! navigate-forward!
          route-url route-state navigating? navigation-wait! navigation-done! route-href route-current? router-text
-         router-current?)
+         router-current? router-base)
 
 (typedef route-reader (fn ((ptr arena) string (ptr void) (ptr buffer)) -> u32))
+(typedef route-missing (fn ((ptr void))))
 
 (const mark u32 1919055219)
 (const header u32 24)
 
 (define started bool #f)
 (define reader route-reader 0)
+(define missing route-missing 0)
 (define size u32 0)
 (define type string "")
+(define base string "")
 
 (define held arena)
 (define route (ptr void) 0)
@@ -82,10 +87,16 @@
 ;; when the path moved. read is set to what reading answered.
 (define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))] [read (ptr u32)]) -> string
   (let ([to (make-buffer)] [p (arena-alloc a size)] [found (copy a at)])
-    (set! (@ read) (reader a at p (& to)))
+    (let* ([target (url-target at)] [n (-> base length)])
+      (if (and (> (-> target length) n) (== (slice target 0 n) base) (== (@ target n) #\/))
+          (set! (@ read) (reader a (slice target n) p (& to)))
+          (begin
+            (missing p)
+            (set! (@ read) url-missing))))
     (when (== (@ read) url-moved)
       (let ([b (make-buffer)] [fragment (url-fragment at)])
         (buffer-add-string! (& b) (url-origin at))
+        (buffer-add-string! (& b) base)
         (buffer-add-string! (& b) (buffer-string (& to)))
         (when (> (-> fragment length) 0)
           (buffer-add-byte! (& b) #\#)
@@ -220,12 +231,17 @@
 
 ;; ---- starting ----
 
-;; router-start! reads the URL as a route of the type named t, size bytes long, before attach mounts the roots.
-(define (router-start! [r route-reader] [n u32] [t string])
+;; router-start! reads the URL as a route of the type named t, size bytes long, before attach mounts the roots. m sets
+;; a route to the missing case.
+(define (router-start! [r route-reader] [m route-missing] [n u32] [t string])
   (set! reader r)
+  (set! missing m)
   (set! size n)
   (set! type t)
   (set! started #t)
+  (let* ([a (make-arena)] [dir (url-path (url-target (url-resolve (& a) (dom-read-text dom-document "baseURI") ".")))])
+    (set! base (string-copy (slice dir 0 (if (> (-> dir length) 0) (- (-> dir length) 1) 0))))
+    (arena-free (& a)))
   (history-set-scroll-restoration "manual")
   (let* ([href (location-href)] [s (history-state)] [p (ptr void) 0] [read u32 0]
          [at (route-of (& held) href (& p) (& read))] [out (make-buffer)])
@@ -293,6 +309,9 @@
 
 (define (router-current? [target string]) -> bool (== target (url-target url)))
 
+;; The directory of the document's base URL, without its final slash.
+(define (router-base) -> string base)
+
 ;; (route-href (case value ...)) writes a route's target, and (route-current? (case value ...)) tells whether the
 ;; document is at it. case alone stands for a case without values.
 (begin-for-syntax
@@ -313,6 +332,7 @@
          (unless (== (identifier-binding-kind write) 'function)
            (raise-syntax-error 'route-href (format-message "~a is not a routable type" `(,(syntax-e t))) e))
          #`(let ([value #,t #,e] [b (make-buffer)])
+             (buffer-add-string! (& b) (router-base))
              (#,write (& b) (& value))
              (router-text (& b))))]
       [_ (raise-syntax-error 'route-href "expected (route-href (case value ...)), or (route-href case)" s)]))

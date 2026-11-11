@@ -3,4 +3,5 @@
   (substrate "0.10.2")
   (exports examples/counter examples/rows router trace ui)
   (tests (browser))
-  (sites (routed "tests/routed.sub" (base "/"))))
+  (sites (routed "tests/routed.sub" (base "/"))
+         (outer "tests/outer.sub" (base "/") (mount "/inner/" routed))))

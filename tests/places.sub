@@ -1,7 +1,7 @@
 ;; The routes of the test app (routed.sub), which its server (support/server.sub) answers too.
 (require-unqualified std/http/routable)
 
-(provide place home user draft long lost place.url-read place.url-write! place.url-check)
+(provide place home user draft long lost place.url-read place.url-write! place.url-check place.url-missing!)
 
 (routable place #:missing lost
   [home ()]

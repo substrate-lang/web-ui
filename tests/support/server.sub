@@ -1,4 +1,5 @@
-;; The test app's server: the site's files, and the app for a path that names none, as the app's routes read it.
+;; The test app's server: the site's files, and the app for a path that names none, as the app's routes read it. The
+;; app is at / and at /inner/, where the outer site mounts it.
 (require-unqualified host/events)
 (require-unqualified std/http)
 (require-unqualified std/http/server)
@@ -9,7 +10,7 @@
 
 (define server http-server)
 (define files http-files)
-(define apps (array http-app 1))
+(define apps (array http-app 2))
 
 (define (handle [r (ptr http-request)]) (http-static! r (& files)))
 
@@ -23,6 +24,7 @@
 (define (main)
   (set! (-> files root) (@ (host-args) 0))
   (set! (@ apps 0) (http-app #:path "/" #:page "index.html" #:routes place.url-check))
+  (set! (@ apps 1) (http-app #:path "/inner/" #:page "inner/index.html" #:routes place.url-check))
   (set! (-> files apps) (slice apps))
   (set! (-> server listening) listening)
   (let ([why error])
