@@ -29,3 +29,9 @@
 (test err-copies
   (twin-ready!)
   (expect-compile-error "fail/err-copies.sub" "err-copies.sub:11:20: error: view: tally was made by another copy of web-ui, so only attach can put it in the document"))
+(test err-route-messages (expect-compile-error "fail/err-route-messages.sub" "err-route-messages.sub:8:11: error: component: #:route needs #:messages"))
+(test err-route-case (expect-compile-error "fail/err-route-case.sub" "err-route-case.sub:14:11: error: component: #:route's case must hold a route, a value of a routable type"))
+(test err-leaving-case (expect-compile-error "fail/err-leaving-case.sub" "err-leaving-case.sub:16:20: error: component: #:leaving's case must hold a string, the URL that the user went for"))
+(test err-attach-routes (expect-compile-error "fail/err-attach-routes.sub" "err-attach-routes.sub:8:18: error: attach: #:routes takes a routable type, and place is not one"))
+(test err-match (expect-compile-error "fail/err-match.sub" "err-match.sub:5:3: error: view: expected (match e [pattern child ...] ...)"))
+(test err-title (expect-compile-error "fail/err-title.sub" "err-title.sub:5:3: error: view: expected (title e), the document's title while this is shown"))

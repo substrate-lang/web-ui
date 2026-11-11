@@ -1,0 +1,66 @@
+;; An app with routes: links between its pages, one with a parameter, a long page with a fragment, a draft that holds
+;; the document while it is unsaved, a navigation from an update, a title for each page, and links the router leaves
+;; alone.
+(require-unqualified web-ui)
+(require-unqualified std/http/routable)
+
+(routable place #:missing lost
+  [home ()]
+  [user ("users" [id u64] "")]
+  [draft ("draft" "")]
+  [long ("long" "")]
+  [#:moved ("index.html") home])
+
+(struct app-state [at place] [unsaved bool] [stopped string] [marked bool])
+
+(variant app-message [went [to place]] [edited] [saved] [stopped [url string]] [marked] [three])
+
+(define (app-update [s (ptr app-state)] [m (ptr app-message)])
+  (match m
+    [(went to) (set! (-> s at) to)]
+    [edited (set! (-> s unsaved) #t)]
+    [saved (set! (-> s unsaved) #f)]
+    [(stopped url) (set! (-> s stopped) (string-copy url))]
+    [marked (set! (-> s marked) #t)]
+    [three (navigate! (route-href (user 3)))]))
+
+(define (unsaved? [s (ptr app-state)]) -> bool (-> s unsaved))
+
+(component (app)
+  #:state [s app-state]
+  #:messages app-message
+  #:update app-update
+  #:route went
+  #:leaving [unsaved? stopped]
+  (div
+    (nav ([style "position: fixed; top: 0; background: white"])
+      (a ([href "/"] [id "home"]) "Home")
+      (a ([href (route-href (user 7))] [id "user"] ["aria-current" (if (route-current? (user 7)) "page" "false")])
+         "User 7")
+      (a ([href "/draft/"] [id "draft"]) "Draft")
+      (a ([href "/long/#end"] [id "long"]) "Long")
+      (a ([href "/nope/"] [id "nope"]) "Nope")
+      (a ([href "/users/5/"] [target "_blank"] [id "blank"]) "Blank")
+      (a ([href "/index.html?full=1"] [rel "nofollow external"] [id "external"]) "External")
+      (a ([href "/users/5/"] [download "page.html"] [id "download"]) "Download"))
+    (button ([on click marked]) "Mark")
+    (button ([on click three]) "Three")
+    (p ([id "mark"]) (text (if (-> s marked) "marked" "")))
+    (main
+      (match (-> s at)
+        [home (title "Home") (p ([id "page"]) "home")]
+        [(user id) (title "User") (p ([id "page"]) "user " (int (cast i64 id)))]
+        [draft
+         (title "Draft")
+         (p ([id "page"]) "draft")
+         (button ([on click edited]) "Edit")
+         (button ([on click saved]) "Save")
+         (p ([id "stopped"]) (text (-> s stopped)))]
+        [long
+         (title "Long")
+         (div ([style "height: 3000px"]) "long")
+         (p ([id "end"]) "the end")
+         (div ([style "height: 3000px"]))]
+        [lost (title "Lost") (p ([id "page"]) "lost")]))))
+
+(attach #:routes place ["root" (app)])

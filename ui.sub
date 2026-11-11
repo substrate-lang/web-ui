@@ -8,8 +8,10 @@
          ui-number-set! ui-number-slot! ui-focus-slot! ui-scroll-end-slot! ui-pointer-lock-slot! ui-read-with!
          ui-event-text ui-event-truth ui-event-number ui-is ui-listener ui-listen ui-heard ui-listener-heard
          ui-instance ui-parent-listener ui-instance-start! ui-instance-end! ui-enter! ui-leave! ui-hear! ui-deliver
-         ui-emit ui-send ui-root! ui-root-with! ui-render! ui-flush-with!
-         ui-row ui-rows ui-each! ui-each-clear!)
+         ui-emit ui-send ui-root! ui-root-with! ui-render! ui-flush-with! ui-update!
+         ui-row ui-rows ui-each! ui-each-clear!
+         ui-route-listen! ui-route-unlisten! ui-route! ui-guard! ui-unguard! ui-held ui-holding? ui-link ui-link-listen!
+         ui-link-handler! ui-title! ui-titles! ui-title-first! ui-drawn!)
 
 ;; ---- run-time support: slots ----
 
@@ -151,6 +153,7 @@
 (define roots (array ui-render 32))
 (define root-count u32 0)
 (define flush ui-render 0)
+(define drawn ui-render 0)
 
 (define (ui-enter! [i (ptr ui-instance)]) -> (ptr ui-instance)
   (let ([outer current])
@@ -193,12 +196,16 @@
     (set! (-> h call) call)
     (set! (-> h parent) current)))
 
-(define (ui-deliver [i (ptr ui-instance)] [message (ptr void)])
+(define (ui-update! [i (ptr ui-instance)] [message (ptr void)])
   (when (and (!= i 0) (!= (-> i update) 0))
     (let ([outer (ui-enter! i)])
       ((-> i update) (-> i state) message)
-      (ui-leave! outer)
-      (when (== depth 0) (ui-render!)))))
+      (ui-leave! outer))))
+
+(define (ui-deliver [i (ptr ui-instance)] [message (ptr void)])
+  (when (and (!= i 0) (!= (-> i update) 0))
+    (ui-update! i message)
+    (when (== depth 0) (ui-render!))))
 
 (define (ui-root! [render ui-render])
   (when (== root-count 32) (host-trap "ui: more than 32 components are attached"))
@@ -206,6 +213,8 @@
   (+= root-count 1))
 
 (define (ui-flush-with! [f ui-render]) (set! flush f))
+
+(define (ui-drawn! [f ui-render]) (set! drawn f))
 
 ;; ui-root-with! makes render a root of this copy of web-ui. The copy that attaches the root gives its event reads and
 ;; its flush. Each view and component names the ui-root-with! of the copy that made it.
@@ -217,8 +226,9 @@
 
 (define (ui-render!)
   (for ([k u32 0]) (< k root-count) (+= k 1) ((@ roots k)))
-  (let ([f flush])
-    (when (!= f 0) (f))))
+  (ui-titles!)
+  (let ([f flush]) (when (!= f 0) (f)))
+  (let ([d drawn]) (when (!= d 0) (d))))
 
 (define (wrong-type! [who string] [kind string] [declared string] [given string])
   (let ([b (make-buffer)])
@@ -300,6 +310,137 @@
     (when (-> r once) (host-trap "unsubscribe!: this tag is from request!, which frees itself"))
     (when (!= i 0) (unlink! i r))
     (free r)))
+
+;; ---- run-time support: routes ----
+
+;; A component that takes routes with #:route, and one that may hold the document on its route with #:leaving.
+(typedef ui-route-deliver (fn ((ptr ui-instance) (ptr void) (fn ((ptr ui-instance) (ptr void))))))
+(struct ui-route-listener [instance (ptr ui-instance)] [deliver ui-route-deliver] [type string]
+  [next (ptr ui-route-listener)])
+(struct ui-guard [instance (ptr ui-instance)] [blocking (fn ((ptr void)) -> bool)]
+  [held (fn ((ptr ui-instance) string))] [next (ptr ui-guard)])
+
+(define route-listeners (ptr ui-route-listener) 0)
+(define guards (ptr ui-guard) 0)
+(define route-now (ptr void) 0)
+(define route-type string "")
+
+(define (route-type! [type string])
+  (unless (== type route-type)
+    (let ([b (make-buffer)])
+      (buffer-add-string! (& b) "#:route: this component takes routes of the type ")
+      (buffer-add-string! (& b) type)
+      (buffer-add-string! (& b) ", but the routes attached are of the type ")
+      (buffer-add-string! (& b) route-type)
+      (host-trap (buffer-string (& b))))))
+
+(define (ui-route-listen! [i (ptr ui-instance)] [deliver ui-route-deliver] [type string])
+  (let ([l (cast (ptr ui-route-listener) (malloc (sizeof ui-route-listener)))])
+    (set! (-> l instance) i)
+    (set! (-> l deliver) deliver)
+    (set! (-> l type) type)
+    (set! (-> l next) route-listeners)
+    (set! route-listeners l)
+    (unless (== route-now 0)
+      (route-type! type)
+      (deliver i route-now ui-update!))))
+
+(define (ui-route-unlisten! [i (ptr ui-instance)])
+  (let ([at (& route-listeners)])
+    (while (!= (@ at) 0)
+      (let ([l (@ at)])
+        (if (== (-> l instance) i)
+            (begin
+              (set! (@ at) (-> l next))
+              (free l))
+            (set! at (& (-> l next))))))))
+
+;; ui-route! makes route, of the type named type, the current route and gives it to the components that take routes,
+;; then draws.
+(define (ui-route! [route (ptr void)] [type string])
+  (set! route-now route)
+  (set! route-type type)
+  (let ([l route-listeners])
+    (while (!= l 0)
+      (route-type! (-> l type))
+      ((-> l deliver) (-> l instance) route ui-update!)
+      (set! l (-> l next))))
+  (when (== depth 0) (ui-render!)))
+
+(define (ui-guard! [i (ptr ui-instance)] [blocking (fn ((ptr void)) -> bool)] [held (fn ((ptr ui-instance) string))])
+  (let ([g (cast (ptr ui-guard) (malloc (sizeof ui-guard)))])
+    (set! (-> g instance) i)
+    (set! (-> g blocking) blocking)
+    (set! (-> g held) held)
+    (set! (-> g next) guards)
+    (set! guards g)))
+
+(define (ui-unguard! [i (ptr ui-instance)])
+  (let ([at (& guards)])
+    (while (!= (@ at) 0)
+      (let ([g (@ at)])
+        (if (== (-> g instance) i)
+            (begin
+              (set! (@ at) (-> g next))
+              (free g))
+            (set! at (& (-> g next))))))))
+
+;; Whether a component holds the document on its route. The first that does is told the URL that the user went for.
+(define (ui-held [url string]) -> bool
+  (let ([g guards])
+    (while (!= g 0)
+      (when ((-> g blocking) (-> (-> g instance) state))
+        ((-> g held) (-> g instance) url)
+        (return #t))
+      (set! g (-> g next)))
+    #f))
+
+(define (ui-holding?) -> bool
+  (let ([g guards])
+    (while (!= g 0)
+      (when ((-> g blocking) (-> (-> g instance) state)) (return #t))
+      (set! g (-> g next)))
+    #f))
+
+;; A link's click listener. The router, once attached, answers clicks; download is whether the link has a download
+;; attribute.
+(struct ui-link [handle handler] [download bool])
+
+(define link-handler (fn (bool)) 0)
+
+(define (ui-link-handler! [h (fn (bool))]) (set! link-handler h))
+
+(define (ui-link-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (let ([h link-handler]) (unless (== h 0) (h (-> (cast (ptr ui-link) tag) download)))))
+
+(define (ui-link-listen! [node u32] [l (ptr ui-link)] [download bool])
+  (set! (-> l handle) ui-link-heard)
+  (set! (-> l download) download)
+  (dom-listen! node "click" (cast (ptr void) l)))
+
+;; The document's title: the last view with (title e) that a drawing reaches gives it, and else the title the document
+;; started with.
+(define title-given string "")
+(define titled bool #f)
+(define title-used bool #f)
+(define title-shown string "")
+(define title-first string "")
+
+(define (ui-title-first! [s string]) (set! title-first (string-copy s)))
+
+(define (ui-title! [s string])
+  (set! title-given s)
+  (set! titled #t)
+  (set! title-used #t))
+
+(define (ui-titles!)
+  (when title-used
+    (let ([t (if titled title-given title-first)])
+      (unless (== t title-shown)
+        (unless (== (-> title-shown length) 0) (free (-> title-shown bytes)))
+        (set! title-shown (string-copy t))
+        (dom-write-text! dom-document "title" title-shown))))
+  (set! titled #f))
 
 ;; ---- run-time support: traps ----
 
@@ -508,7 +649,9 @@
       touchcancel touchend touchmove touchstart transitioncancel transitionend transitionrun transitionstart visibility
       volumechange wheel))
 
-  (define window-events datum '(frame resize hashchange popstate online offline visibilitychange pointerlockchange pointerlockerror))
+  (define window-events datum
+    '(frame resize hashchange popstate online offline visibilitychange pointerlockchange pointerlockerror beforeunload
+      pageshow pagehide))
 
   ;; ---- compiling a block's children ----
 
@@ -587,13 +730,15 @@
     (let ([e (syntax-e f)] [l (syntax->list f)])
       (cond [(string? e) (html-text! (html-of b) (datum->string e))]
             [(or (== l 0) (null? l) (not (identifier? (car l))))
-             (fail f '"expected a child: text in quotes, an element (tag ...), (text e), (int e), (if c child child), (when c child ...), (each [x items n] #:key k child ...), a view (v e ...) or a component (c ([parameter value] ...))")]
+             (fail f '"expected a child: text in quotes, an element (tag ...), (text e), (int e), (title e), (if c child child), (when c child ...), (match e [pattern child ...] ...), (each [x items n] #:key k child ...), a view (v e ...) or a component (c ([parameter value] ...))")]
             [else
              (let ([word (syntax-e (car l))])
                (cond [(== word 'text) (text! b f l)]
                      [(== word 'int) (int! b f l)]
+                     [(== word 'title) (title! b f l)]
                      [(== word 'if) (if! b f l)]
                      [(== word 'when) (when! b f l)]
+                     [(== word 'match) (match! b f l)]
                      [(== word 'each) (each! b f l)]
                      [(!= (view-of (car l)) 0) (own! (car l) (view-of (car l))) (call! b f l (view-of (car l)))]
                      [(!= (component-of (car l)) 0)
@@ -616,6 +761,16 @@
       (mount! b #`(ui-int-set! (& (-> bs #,slot)) #,node #,(cadr l)))
       (update! b #`(ui-int-slot! (& (-> bs #,slot)) #,node #,(cadr l)))))
 
+  (define (title! [b (ptr block)] [f datum] [l datum])
+    (unless (== (length l) 2) (fail f '"expected (title e), the document's title while this is shown"))
+    (both! b #`(ui-title! #,(cadr l))))
+
+  (define (attribute-given? [attributes datum] [name datum]) -> bool
+    (for/each ([a attributes])
+      (let* ([al (syntax->list a)] [word (if (and (!= al 0) (pair? al)) (syntax-e (car al)) 0)])
+        (when (or (== word name) (and (string? word) (== (string->symbol (datum->string word)) name))) (return #t))))
+    #f)
+
   (define (element! [b (ptr block)] [f datum] [l datum])
     (let* ([tag (syntax-e (car l))]
            [given (and (pair? (cdr l)) (attributes? (cadr l)))]
@@ -627,12 +782,15 @@
       (unless (or (html-element? (symbol->string tag)) (custom-element? (symbol->string tag)))
         (fail (car l) (format "unknown element ~a: it is not an HTML element or a view (a custom element's name must be lower-case and contain a hyphen)" `(,tag))))
       (html-open! (html-of b) (symbol->string tag))
-      (while (pair? attributes)
-        (let* ([a (car attributes)] [al (syntax->list a)])
+      (for/each ([a attributes])
+        (let ([al (syntax->list a)])
           (unless (and (!= al 0) (pair? al) (or (identifier? (car al)) (string? (syntax-e (car al)))))
             (fail a '"expected [name value], [name], [on event message], [draw key code], [node place], [focus e], [scroll-end e] or [pointer-lock e]"))
-          (attribute! b tag a al (& node)))
-        (set! attributes (cdr attributes)))
+          (attribute! b tag a al (& node))))
+      (when (and (or (== tag 'a) (== tag 'area)) (attribute-given? attributes 'href))
+        (let ([slot (field! b #'ui-link)] [at (marked! b (& node))])
+          (mount! b #`(ui-link-listen! #,at (& (-> bs #,slot))
+                                       #,(literal (boolean (attribute-given? attributes 'download)))))))
       (html-opened! (html-of b))
       (if (void-element? (symbol->string tag))
           (unless (null? children) (fail f (format "the element ~a cannot have children" `(,tag))))
@@ -846,6 +1004,43 @@
         (case (-> bs #,which)
           [(1) (#,(-> one unmounter) (cast (ptr #,(-> one state)) (-> bs #,state)) #,detach)]
           #,@(if (== two 0) nil `(,#`[(2) (#,(-> two unmounter) (cast (ptr #,(-> two state)) (-> bs #,state)) #,detach)])))
+        (free (-> bs #,state))))
+
+  ;; A clause of match, compiled: (pattern number state unmounter update mount).
+  (define (match! [b (ptr block)] [f datum] [l datum])
+    (unless (>= (length l) 3) (fail f '"expected (match e [pattern child ...] ...)"))
+    (html-comment! (html-of b) "a")
+    (let ([anchor (node! b)] [which (field! b #'i32)] [state (field! b #'(ptr void))] [clauses nil] [k u32 0])
+      (for/each ([c (cddr l)])
+        (let ([cl (syntax->list c)] [one (new-block #f)])
+          (unless (and (!= cl 0) (>= (length cl) 2)) (fail c '"expected [pattern child ...]"))
+          (+= k 1)
+          (compile-children! one (cdr cl))
+          (finish! one)
+          (set! clauses (cons `(,(car cl) ,(number k) ,(-> one state) ,(-> one unmounter) ,(statements (-> one update))
+                                ,(mount-code one))
+                              clauses))))
+      (set! clauses (reverse clauses))
+      (mount! b #`(set! (-> bs #,which) 0))
+      (mount! b #`(set! (-> bs #,state) 0))
+      (both! b #`(match #,(cadr l)
+                   #,@(for/list ([c clauses])
+                        #`[#,(car c)
+                           (if (== (-> bs #,which) #,(cadr c))
+                               (let ([bs (cast (ptr #,(caddr c)) (-> bs #,state))]) #,@(list-ref c 4))
+                               (begin
+                                 #,(clauses-unmount clauses which state #'#t)
+                                 (set! (-> bs #,which) #,(cadr c))
+                                 (set! (-> bs #,state) (malloc (sizeof #,(caddr c))))
+                                 (let ([bs (cast (ptr #,(caddr c)) (-> bs #,state))] [parent 0] [before #,anchor])
+                                   #,@(list-ref c 5))))])))
+      (unmount! b (clauses-unmount clauses which state #'#f))))
+
+  (define (clauses-unmount [clauses datum] [which datum] [state datum] [detach datum]) -> datum
+    #`(begin
+        (case (-> bs #,which)
+          #,@(for/list ([c clauses]) #`[(#,(cadr c)) (#,(cadddr c) (cast (ptr #,(caddr c)) (-> bs #,state)) #,detach)])
+          [else (begin)])
         (free (-> bs #,state))))
 
   (define (each! [b (ptr block)] [f datum] [l datum])
@@ -1085,19 +1280,32 @@
     (unless (and (identifier? t) (let ([info (type-info t)]) (and (pair? info) (== (car info) 'variant))))
       (raise-syntax-error who (datum->string (format "the ~a must be a variant type" `(,what))) t)))
 
+  ;; A case of the messages, which must hold one value, and that value's type.
+  (define (message-case [messages datum] [c datum] [option datum]) -> datum
+    (let ([found (if (identifier? c) (variant-case messages c) 0)])
+      (unless (and (!= found 0) (== (length (cdr found)) 1))
+        (raise-syntax-error 'component
+                            (datum->string (format "~a takes a case of the messages that holds one value" `(,option)))
+                            c))
+      (cdr (cadr found))))
+
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f and #:style css. Its instances each have a state, which
-  ;; the children see as s. #:init runs when an instance is mounted. #:changed runs before a drawing whose parameters
-  ;; differ, bit for bit, from those of the drawing before. Both take the state and the parameters. The stylesheet is
-  ;; added to the document when the first instance is mounted.
+  ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and #:leaving [held? case].
+  ;; Its instances each have a state, which the children see as s. #:init runs when an instance is mounted. #:changed
+  ;; runs before a drawing whose parameters differ, bit for bit, from those of the drawing before. Both take the state
+  ;; and the parameters. The stylesheet is added to the document when the first instance is mounted. #:route's case, of
+  ;; one route, is sent the route when the instance is mounted and after each navigation. While (held? state) is true,
+  ;; #:leaving's case, of one string, is sent the URL of a navigation that the router stops.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
        (let ([options nil] [children rest])
          (while (and (pair? children) (keyword? (syntax-e (car children))))
            (let ([word (syntax-e (car children))])
-             (unless (!= (memq word '(#:state #:messages #:update #:init #:changed #:free #:events #:trapped #:style)) 0)
-               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:changed, #:free, #:events, #:trapped and #:style" (car children)))
+             (unless (!= (memq word '(#:state #:messages #:update #:init #:changed #:free #:events #:trapped #:style
+                                      #:route #:leaving))
+                         0)
+               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:changed, #:free, #:events, #:trapped, #:style, #:route and #:leaving" (car children)))
              (unless (pair? (cdr children)) (raise-syntax-error 'component "expected a value after the option" (car children)))
              (unless (== (assq word options) 0) (raise-syntax-error 'component "this option is given twice" (car children)))
              (set! options (cons (cons word (cadr children)) options))
@@ -1106,12 +1314,18 @@
                 [messages (option-of options '#:messages)] [update (option-of options '#:update)]
                 [init (option-of options '#:init)] [changed (option-of options '#:changed)] [free (option-of options '#:free)]
                 [events (option-of options '#:events)] [trapped (option-of options '#:trapped)]
-                [style (option-of options '#:style)])
+                [style (option-of options '#:style)] [route (option-of options '#:route)]
+                [leaving (option-of options '#:leaving)] [leaving-l (if (== leaving 0) 0 (syntax->list leaving))])
            (unless (and (!= state-l 0) (== (length state-l) 2) (identifier? (car state-l)))
              (raise-syntax-error 'component "a component needs #:state [name TYPE]" (if (== state 0) s state)))
            (when (and (== messages 0) (!= update 0)) (raise-syntax-error 'component "#:update needs #:messages" update))
            (when (and (!= messages 0) (== update 0)) (raise-syntax-error 'component "#:messages needs #:update" messages))
            (when (and (!= changed 0) (null? parameter)) (raise-syntax-error 'component "#:changed needs parameters" changed))
+           (when (and (== messages 0) (!= route 0)) (raise-syntax-error 'component "#:route needs #:messages" route))
+           (when (and (== messages 0) (!= leaving 0))
+             (raise-syntax-error 'component "#:leaving needs #:messages" leaving))
+           (unless (or (== leaving 0) (and (!= leaving-l 0) (== (length leaving-l) 2)))
+             (raise-syntax-error 'component "expected #:leaving [held? case]" leaving))
            (unless (== messages 0) (variant! 'component messages '"messages"))
            (unless (== events 0) (variant! 'component events '"events"))
            (let* ([s-name (car state-l)] [t (cadr state-l)] [view (component-name name '"view")]
@@ -1120,7 +1334,15 @@
                   [adapter (component-name name '"message")] [trap (component-name name '"trap")]
                   [names (for/list ([p parameter]) (car (syntax->list p)))]
                   [types (for/list ([p parameter]) (cadr (syntax->list p)))]
-                  [lasts (if (== changed 0) nil (for/list ([n names]) (component-name n '"last")))])
+                  [lasts (if (== changed 0) nil (for/list ([n names]) (component-name n '"last")))]
+                  [route-type (if (== route 0) 0 (message-case messages route '#:route))]
+                  [route-fn (component-name name '"route")] [held? (component-name name '"held?")]
+                  [held (component-name name '"held")])
+             (unless (or (== route 0) (identifier? route-type))
+               (raise-syntax-error 'component "#:route's case must hold a route, a value of a routable type" route))
+             (unless (or (== leaving 0) (== (message-case messages (cadr leaving-l) '#:leaving) 'string))
+               (raise-syntax-error 'component "#:leaving's case must hold a string, the URL that the user went for"
+                                   (cadr leaving-l)))
              #`(begin
                  (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages)
                        #,@(if (== style 0) nil `(,#'#:style ,style))
@@ -1134,6 +1356,18 @@
                  #,@(if (== trapped 0)
                         nil
                         `(,#`(define (#,trap [state (ptr void)] [why string]) (#,trapped (cast (ptr #,t) state) why))))
+                 #,@(if (== route 0)
+                        nil
+                        `(,#`(define (#,route-fn [i (ptr ui-instance)] [r (ptr void)]
+                                                 [send (fn ((ptr ui-instance) (ptr void)))])
+                               (let ([m #,messages (#,route (@ (cast (ptr #,route-type) r)))])
+                                 (send i (cast (ptr void) (& m)))))))
+                 #,@(if (== leaving 0)
+                        nil
+                        `(,#`(define (#,held? [state (ptr void)]) -> bool (#,(car leaving-l) (cast (ptr #,t) state)))
+                          ,#`(define (#,held [i (ptr ui-instance)] [url string])
+                               (let ([m #,messages (#,(cadr leaving-l) url)])
+                                 (ui-deliver i (cast (ptr void) (& m)))))))
                  (define (#,mount [i (ptr #,instance)] [parent u32] [before u32] [heard (ptr ui-parent-listener)]
                                   [heard-count u32] #,@parameter)
                    (ui-instance-start! (& (-> i head)) (cast (ptr void) (& (-> i state)))
@@ -1143,6 +1377,10 @@
                    #,@(for/list ([l lasts] [n names]) #`(set! (-> i #,l) #,n))
                    (let ([outer (ui-enter! (& (-> i head)))])
                      #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
+                     #,@(if (== route 0)
+                            nil
+                            `(,#`(ui-route-listen! (& (-> i head)) #,route-fn #,(type-text route-type))))
+                     #,@(if (== leaving 0) nil `(,#`(ui-guard! (& (-> i head)) #,held? #,held)))
                      (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
                      (ui-leave! outer)))
                  (define (#,update-fn [i (ptr #,instance)] #,@parameter)
@@ -1161,6 +1399,8 @@
                  (define (#,unmount [i (ptr #,instance)] [detach bool])
                    (let ([outer (ui-enter! (& (-> i head)))])
                      (#,(component-name view '"unmount") (& (-> i view)) detach)
+                     #,@(if (== route 0) nil `(,#`(ui-route-unlisten! (& (-> i head)))))
+                     #,@(if (== leaving 0) nil `(,#`(ui-unguard! (& (-> i head)))))
                      #,@(if (== free 0) nil `(,#`(#,free (& (-> i state)))))
                      (ui-instance-end! (& (-> i head)))
                      (ui-leave! outer)))

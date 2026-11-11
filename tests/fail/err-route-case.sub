@@ -1,0 +1,16 @@
+;; A component whose #:route case holds a number, not a route.
+(require-unqualified web-ui/ui)
+
+(struct page-state [n u32])
+
+(variant page-message [went [n u32]])
+
+(define (page-update [s (ptr page-state)] [m (ptr page-message)]) 0)
+
+(component (page)
+  #:state [s page-state]
+  #:messages page-message
+  #:update page-update
+  #:route went
+  (p "page"))
+(define (main) 0)

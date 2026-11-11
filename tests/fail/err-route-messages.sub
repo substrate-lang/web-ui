@@ -1,0 +1,10 @@
+;; A component with #:route but no messages.
+(require-unqualified web-ui/ui)
+
+(struct page-state [n i32])
+
+(component (page)
+  #:state [s page-state]
+  #:route went
+  (p "page"))
+(define (main) 0)

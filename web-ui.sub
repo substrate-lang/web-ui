@@ -1,12 +1,14 @@
-;; The language of web user interfaces: ui.sub's views and components, and attach, which puts them in elements of the
-;; document.
+;; The language of web user interfaces: ui.sub's views and components, attach, which puts them in elements of the
+;; document, and router.sub's routes.
 (require-unqualified ui "ui.sub")
+(require-unqualified router "router.sub")
 (require-unqualified events host/events)
 (require-unqualified dom std/web/dom)
 (require-unqualified host/web/location)
 (require-unqualified std/http/url)
 
-(provide (all-from-out ui) (all-from-out events) (all-from-out dom) attach prevent-default! stop-propagation!)
+(provide (all-from-out ui) (all-from-out router) (all-from-out events) (all-from-out dom) attach prevent-default!
+         stop-propagation!)
 
 (define (prevent-default!) (dom-event-call "preventDefault"))
 
@@ -23,10 +25,11 @@
 
 (define (attach-start!)
   (ui-read-with! dom-event-text dom-event-number dom-is)
-  (ui-flush-with! dom-flush!))
+  (ui-flush-with! dom-flush!)
+  (ui-title-first! (dom-read-text dom-document "title")))
 
 (define (attach-scroll!)
-  (let ([url (location-get)] [i u32 0] [a (make-arena)])
+  (let ([url (location-href)] [i u32 0] [a (make-arena)])
     (while (and (< i (-> url length)) (!= (@ url i) #\#)) (+= i 1))
     (when (< (+ i 1) (-> url length))
       (let* ([raw (slice url (+ i 1) (-> url length))] [decoded (url-unescape (& a) raw #f)] [n (dom-element raw)])
@@ -39,14 +42,32 @@
 
 (begin-for-syntax
   (require-unqualified compiler/macros)
+  (require-unqualified std/meta/type-info)
 
-  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element with its id.
-  ;; A view, (v e ...), can take a component's place. Once they are drawn, main scrolls to the element that the URL's
-  ;; fragment names.
+  (define (routes-named [t datum] [what datum]) -> datum
+    (datum->syntax t (string->symbol (format-message "~a.~a" `(,(syntax-e t) ,what))) t))
+
+  ;; The name of a type, as the run-time checks of #:route compare it.
+  (define (type-text [t datum]) -> datum
+    (datum->syntax #'here (string->datum (symbol->string (syntax-e (cadr (type-info t))))) 0))
+
+  ;; (attach option ... ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element
+  ;; with its id. A view, (v e ...), can take a component's place. Once they are drawn, main scrolls to the element that
+  ;; the URL's fragment names. The option #:routes T, a routable type, starts the router with the URL read as a T, and
+  ;; #:base "/path/" gives the part of the site that the router keeps, all of it unless given.
   (define (attach-form [s datum]) -> datum
     (syntax-match s
       [(_ given ...)
-       (let ([roots nil] [mounts nil] [k u32 0])
+       (let ([roots nil] [mounts nil] [k u32 0] [items given] [routes datum 0] [base datum #'"/"]
+             [reader (datum->syntax #'here 'attach-route-read 0)])
+         (while (and (pair? items) (keyword? (syntax-e (car items))))
+           (let ([word (syntax-e (car items))])
+             (unless (pair? (cdr items)) (raise-syntax-error 'attach "expected a value after the option" (car items)))
+             (cond [(== word '#:routes) (set! routes (cadr items))]
+                   [(== word '#:base) (set! base (cadr items))]
+                   [else
+                    (raise-syntax-error 'attach "the options are #:routes TYPE and #:base \"/path/\"" (car items))])
+             (set! items (cddr items))))
          (for-each (lambda ([p datum])
                      (let ([l (syntax->list p)])
                        (unless (and (!= l 0) (== (length l) 2) (string? (syntax-e (car l))))
@@ -55,14 +76,27 @@
                          (set! roots (cons #`(ui-root #,mount (attach-node #,(car l)) #,(cadr l)) roots))
                          (set! mounts (cons #`(#,mount) mounts))
                          (+= k 1))))
-                   given)
+                   items)
          (when (null? roots) (raise-syntax-error 'attach "expected at least one [\"id\" (component ...)] or [\"id\" (view ...)]" s))
-         #`(begin
-             #,@(reverse roots)
-             (define (main)
-               (attach-start!)
-               #,@(reverse mounts)
-               (dom-flush!)
-               (attach-scroll!))))])))
+         (let ([read (if (== routes 0) 0 (routes-named routes '"url-read"))])
+           (unless (or (== routes 0) (== (identifier-binding-kind read) 'function))
+             (raise-syntax-error 'attach (format-message "#:routes takes a routable type, and ~a is not one"
+                                                         `(,(syntax-e routes)))
+                                 routes))
+           #`(begin
+               #,@(reverse roots)
+               #,@(if (== routes 0)
+                      nil
+                      `(,#`(define (#,reader [a (ptr arena)] [url string] [r (ptr void)] [to (ptr buffer)]) -> u32
+                             (#,read a url (cast (ptr #,routes) r) to))))
+               (define (main)
+                 (attach-start!)
+                 #,@(if (== routes 0)
+                        nil
+                        `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes) #,base)))
+                 #,@(reverse mounts)
+                 (ui-titles!)
+                 (dom-flush!)
+                 #,(if (== routes 0) #'(attach-scroll!) #'(router-mounted!))))))])))
 
 (define-syntax attach attach-form)

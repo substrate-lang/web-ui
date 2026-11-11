@@ -1,5 +1,5 @@
-;; A second copy of web-ui for tests: twin-ready! copies ui.sub and web-ui.sub into the scratch directory and adds the
-;; copy to the compiler's module map as the root twin.
+;; A second copy of web-ui for tests: twin-ready! copies ui.sub, router.sub and web-ui.sub into the scratch directory,
+;; and adds the copy to the compiler's module map as the root twin.
 (require-unqualified compiler/macros)
 (require-unqualified compiler/roots)
 (require-unqualified host/fs)
@@ -19,6 +19,7 @@
     (let ([dir (joined-path (scratch-directory) "twin")] [map-file string] [text (make-buffer)] [b (slice u8)])
       (fs-make-dir dir 0)
       (fs-copy "ui.sub" (joined-path dir "ui.sub") 0)
+      (fs-copy "router.sub" (joined-path dir "router.sub") 0)
       (fs-copy "web-ui.sub" (joined-path dir "web-ui.sub") 0)
       (env-get "SUBSTRATE_MODULE_MAP" (& map-file) 0)
       (fs-read-file map-file (& b) 0)

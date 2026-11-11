@@ -1,0 +1,18 @@
+;; A component whose #:leaving case holds a number, not a URL.
+(require-unqualified web-ui/ui)
+
+(struct page-state [n u32])
+
+(variant page-message [stopped [n u32]])
+
+(define (page-update [s (ptr page-state)] [m (ptr page-message)]) 0)
+
+(define (held? [s (ptr page-state)]) -> bool #f)
+
+(component (page)
+  #:state [s page-state]
+  #:messages page-message
+  #:update page-update
+  #:leaving [held? stopped]
+  (p "page"))
+(define (main) 0)
