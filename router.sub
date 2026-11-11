@@ -2,9 +2,9 @@
 ;; browser's history and given to the components that take routes (#:route). attach starts it. The routes read the path
 ;; from the directory of the document's base URL on, so /notes/7/ is /7/ to a page with <base href="/notes/">, and a URL
 ;; outside that directory is no route. route-href writes the whole path. A click on a link to a URL that one of the
-;; routes matches navigates in place, unless a key or a mouse button other than the first is held or
-;; the link has a target, a download attribute or rel external. So do navigate! and Back and Forward. Other URLs are the
-;; browser's to load.
+;; routes matches navigates in place, unless a key or a mouse button other than the first is held or the link has a
+;; target, a download attribute or rel external. So does a form that submits with GET to the document, to its action's
+;; URL with the form's query, and so do navigate! and Back and Forward. Other URLs are the browser's to load.
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
 ;; moves to the start of the document, its title is announced, and the page scrolls to the URL's fragment or its top,
 ;; or back to where it was for Back, Forward and a reload. The router's state starts each entry's state: a mark, the
@@ -15,6 +15,7 @@
 (require-unqualified host/web/history)
 (require-unqualified host/web/location)
 (require-unqualified std/web/dom)
+(require-unqualified std/http/http)
 (require-unqualified std/http/url)
 (require-unqualified std/http/routable)
 
@@ -194,12 +195,41 @@
         (set! start (+ i 1))))
     #f))
 
-(define (clicked [download bool])
-  (let ([target (dom-event-text "currentTarget.target")])
-    (unless (or download (!= (dom-event-number "button") 0.0) (key-held?) (!= (dom-event-number "defaultPrevented") 0.0)
+(define (clicked)
+  (let ([target (dom-event-text "currentTarget.target")] [download string])
+    (unless (or (dom-event-attribute "currentTarget" "download" (& download))
+                (!= (dom-event-number "button") 0.0) (key-held?) (!= (dom-event-number "defaultPrevented") 0.0)
                 (and (> (-> target length) 0) (!= target "_self"))
                 (has-word? (dom-event-text "currentTarget.rel") "external"))
       (when (went! (dom-event-text "currentTarget.href") #f #f none) (dom-event-call "preventDefault")))))
+
+;; The submitter's attribute when it has one, and else the form's.
+(define (chosen [own string] [form string]) -> string
+  (let ([value string])
+    (unless (dom-event-attribute "submitter" own (& value)) (dom-event-attribute "currentTarget" form (& value)))
+    value))
+
+(define (submitted)
+  (let ([method (chosen "formmethod" "method")] [target (chosen "formtarget" "target")]
+        [action (chosen "formaction" "action")] [rel string])
+    (dom-event-attribute "currentTarget" "rel" (& rel))
+    (unless (or (!= (dom-event-number "defaultPrevented") 0.0) (http-same? method "post") (http-same? method "dialog")
+                (and (> (-> target length) 0) (!= target "_self")) (has-word? rel "external"))
+      (let* ([a (make-arena)]
+             [to (if (== (-> action length) 0) url (url-resolve (& a) (dom-read-text dom-document "baseURI") action))]
+             [fragment (url-fragment to)] [b (make-buffer)])
+        (buffer-add-string! (& b) (url-origin to))
+        (buffer-add-string! (& b) (url-path (url-target to)))
+        (buffer-add-byte! (& b) #\?)
+        (buffer-add-string! (& b) (dom-event-form "currentTarget"))
+        (when (> (-> fragment length) 0)
+          (buffer-add-byte! (& b) #\#)
+          (buffer-add-string! (& b) fragment))
+        (when (went! (buffer-string (& b)) #f #f none) (dom-event-call "preventDefault"))
+        (buffer-free! (& b))
+        (arena-free (& a))))))
+
+(define (followed) (if (== (dom-event-text "type") "submit") (submitted) (clicked)))
 
 (define (heard-pop [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
   (let ([given (events-take-text)]) (free (-> given bytes)))
@@ -266,7 +296,7 @@
   (history-listen (& popped))
   (set! (-> leaving handle) heard-leave)
   (dom-listen-window! 0 "beforeunload" (cast (ptr void) (& leaving)))
-  (ui-link-handler! clicked)
+  (ui-navigator! followed)
   (ui-drawn! drawn!)
   (set! announcer (+ (dom-add! (dom-template "<div aria-live=\"polite\" aria-atomic=\"true\" style=\"position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap\"><!--t--></div>") 0 0) 1)))
 

@@ -155,6 +155,24 @@
     (expect-text b (by-css "#mark") "")
     (expect (ends? (browser-url b) "/inner/nope/"))))
 
+(test route-forms
+  (with-browser (b "routed")
+    (browser-click! b (by-role "button" "Mark"))
+    (browser-type! b (by-css "#q") "cats & dogs")
+    (browser-press! b "Enter")
+    (expect-text b (by-css "#page") "search cats & dogs")
+    (expect-equal (browser-url b) "http://localhost/search/?q=cats+%26+dogs&go=1")
+    (expect-text b (by-css "title") "Search")
+    (expect-text b (by-css "#mark") "marked")
+    (browser-back! b)
+    (expect-text b (by-css "#page") "home")
+    (browser-click! b (by-role "button" "Search"))
+    (expect-text b (by-css "#page") "search cats & dogs")
+    (expect-text b (by-css "#mark") "marked")
+    (browser-click! b (by-css "#post"))
+    (expect-text b (by-css "#page") "home")
+    (expect-text b (by-css "#mark") "")))
+
 (test route-scroll
   (with-browser (b "routed")
     (browser-click! b (by-css "#long"))

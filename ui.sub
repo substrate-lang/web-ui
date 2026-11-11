@@ -10,8 +10,8 @@
          ui-instance ui-parent-listener ui-instance-start! ui-instance-end! ui-enter! ui-leave! ui-hear! ui-deliver
          ui-emit ui-send ui-root! ui-root-with! ui-render! ui-flush-with! ui-update!
          ui-row ui-rows ui-each! ui-each-clear!
-         ui-route-listen! ui-route-unlisten! ui-route! ui-guard! ui-unguard! ui-held ui-holding? ui-link ui-link-listen!
-         ui-link-handler! ui-title! ui-titles! ui-title-first! ui-drawn! ui-join! ui-joined! ui-router!
+         ui-route-listen! ui-route-unlisten! ui-route! ui-guard! ui-unguard! ui-held ui-holding? ui-link-listen!
+         ui-form-listen! ui-navigator! ui-title! ui-titles! ui-title-first! ui-drawn! ui-join! ui-joined! ui-router!
          ui-router-joined? ui-router-navigate! ui-router-url ui-router-base ui-router-state ui-router-wait!
          ui-router-done! ui-router-busy?)
 
@@ -417,21 +417,24 @@
       (when ((-> (+ (cast (ptr ui-copy) copies) k) holding)) (return #t)))
     #f))
 
-;; A link's click listener. The router, once attached, answers clicks; download is whether the link has a download
-;; attribute.
-(struct ui-link [handle handler] [download bool])
+;; Links and forms. The router, once attached, answers clicks on links and submissions of forms.
+(struct ui-navigation [handle handler])
 
-(define link-handler (fn (bool)) 0)
+(define navigator ui-render 0)
+(define navigation ui-navigation)
 
-(define (ui-link-handler! [h (fn (bool))]) (set! link-handler h))
+(define (ui-navigator! [h ui-render]) (set! navigator h))
 
-(define (ui-link-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
-  (let ([h link-handler]) (unless (== h 0) (h (-> (cast (ptr ui-link) tag) download)))))
+(define (navigation-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (let ([h navigator]) (unless (== h 0) (h))))
 
-(define (ui-link-listen! [node u32] [l (ptr ui-link)] [download bool])
-  (set! (-> l handle) ui-link-heard)
-  (set! (-> l download) download)
-  (dom-listen! node "click" (cast (ptr void) l)))
+(define (navigation-listen! [node u32] [event string])
+  (set! (-> navigation handle) navigation-heard)
+  (dom-listen! node event (cast (ptr void) (& navigation))))
+
+(define (ui-link-listen! [node u32]) (navigation-listen! node "click"))
+
+(define (ui-form-listen! [node u32]) (navigation-listen! node "submit"))
 
 ;; The document's title: the last view with (title e) that a drawing reaches gives it, and else the title the document
 ;; started with.
@@ -463,9 +466,9 @@
 ;; ---- run-time support: copies ----
 
 ;; A component that another copy of web-ui attaches joins this copy to that one before it starts. The attaching copy
-;; gives its event reads, its drawing, its link handler, its route, its titles and its router, and takes this copy's
-;; routes and guards. A component from web-ui 0.10.2 has no ui-join! and joins nothing.
-(typedef ui-join (fn ((fn (string) -> string) (fn (string) -> f64) (fn (u32 u32 string) -> bool) ui-render (fn (bool))
+;; gives its event reads, its drawing, its navigator, its route, its titles and its router, and takes this copy's routes
+;; and guards. A component from web-ui 0.10.2 has no ui-join! and joins nothing.
+(typedef ui-join (fn ((fn (string) -> string) (fn (string) -> f64) (fn (u32 u32 string) -> bool) ui-render ui-render
                       (ptr void) string (fn (string)) (fn (string bool bool (slice u8))) (fn () -> string)
                       (fn () -> string) (fn () -> (slice u8)) ui-render ui-render (fn () -> bool)
                       (fn ((fn ((ptr void) string)) (fn (string) -> bool) (fn () -> bool))))))
@@ -498,7 +501,7 @@
   (set! router-busy busy))
 
 (define (ui-join! [texts (fn (string) -> string)] [numbers (fn (string) -> f64)] [is (fn (u32 u32 string) -> bool)]
-                  [draw ui-render] [link (fn (bool))] [route (ptr void)] [type string] [title (fn (string))]
+                  [draw ui-render] [navigate-by ui-render] [route (ptr void)] [type string] [title (fn (string))]
                   [navigate (fn (string bool bool (slice u8)))] [url (fn () -> string)] [base (fn () -> string)]
                   [state (fn () -> (slice u8))] [wait ui-render] [done ui-render] [busy (fn () -> bool)]
                   [join (fn ((fn ((ptr void) string)) (fn (string) -> bool) (fn () -> bool)))])
@@ -506,7 +509,7 @@
     (set! joined #t)
     (ui-read-with! texts numbers is)
     (set! draw-with draw)
-    (set! link-handler link)
+    (set! navigator navigate-by)
     (set! route-now route)
     (set! route-type type)
     (set! title-with title)
@@ -522,7 +525,7 @@
 
 ;; ui-joined! joins the copy whose ui-join! is given to this one.
 (define (ui-joined! [join ui-join])
-  (join event-texts event-numbers node-is ui-render-idle! link-handler route-now route-type ui-title! router-navigate
+  (join event-texts event-numbers node-is ui-render-idle! navigator route-now route-type ui-title! router-navigate
         router-url router-base router-state router-wait router-done router-busy copy-joined!))
 
 (define (ui-router-joined?) -> bool router-joined)
@@ -892,9 +895,8 @@
             (fail a '"expected [name value], [name], [on event message], [draw key code], [node place], [focus e], [scroll-end e] or [pointer-lock e]"))
           (attribute! b tag a al (& node))))
       (when (and (or (== tag 'a) (== tag 'area)) (attribute-given? attributes 'href))
-        (let ([slot (field! b #'ui-link)] [at (marked! b (& node))])
-          (mount! b #`(ui-link-listen! #,at (& (-> bs #,slot))
-                                       #,(literal (boolean (attribute-given? attributes 'download)))))))
+        (mount! b #`(ui-link-listen! #,(marked! b (& node)))))
+      (when (== tag 'form) (mount! b #`(ui-form-listen! #,(marked! b (& node)))))
       (html-opened! (html-of b))
       (if (void-element? (symbol->string tag))
           (unless (null? children) (fail f (format "the element ~a cannot have children" `(,tag))))

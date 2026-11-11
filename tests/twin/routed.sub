@@ -41,6 +41,7 @@
        (button ([on click edited]) "Edit")
        (p ([id "stopped"]) (text (-> s stopped)))]
       [long (title "Long") (p ([id "page"]) "long")]
+      [(search query) (title "Search") (p ([id "page"]) "search")]
       [lost (title "Lost") (p ([id "page"]) "lost")])))
 
 (attach #:routes place ["root" (trip)])

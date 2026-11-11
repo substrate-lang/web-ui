@@ -1,6 +1,7 @@
 ;; An app with routes (places.sub): links between its pages, one with a parameter, a long page with a fragment, a draft
 ;; that holds the document while it is unsaved, a navigation from an update, a title for each page, and links the router
-;; leaves alone. Its links work at any base: they come from route-href or are relative.
+;; leaves alone, and a form that searches in place. Its links work at any base: they come from route-href or are
+;; relative.
 (require-unqualified web-ui)
 (require-unqualified std/http/routable)
 (require-unqualified "places.sub")
@@ -37,6 +38,10 @@
       (a ([href (route-href (user 5))] [target "_blank"] [id "blank"]) "Blank")
       (a ([href "index.html?full=1"] [rel "nofollow external"] [id "external"]) "External")
       (a ([href (route-href (user 5))] [download "page.html"] [id "download"]) "Download"))
+    (form ([action "search/"])
+      (input ([name "q"] [id "q"]))
+      (button ([name "go"] [value "1"]) "Search")
+      (button ([formmethod "post"] [formaction "index.html"] [id "post"]) "Post"))
     (button ([on click marked]) "Mark")
     (button ([on click three]) "Three")
     (p ([id "mark"]) (text (if (-> s marked) "marked" "")))
@@ -55,6 +60,7 @@
          (div ([style "height: 3000px"]) "long")
          (p ([id "end"]) "the end")
          (div ([style "height: 3000px"]))]
+        [(search query) (title "Search") (p ([id "page"]) "search " (text (-> query q)))]
         [lost (title "Lost") (p ([id "page"]) "lost")]))))
 
 (attach #:routes place ["root" (app)])
