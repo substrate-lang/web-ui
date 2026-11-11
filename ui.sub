@@ -11,7 +11,9 @@
          ui-emit ui-send ui-root! ui-root-with! ui-render! ui-flush-with! ui-update!
          ui-row ui-rows ui-each! ui-each-clear!
          ui-route-listen! ui-route-unlisten! ui-route! ui-guard! ui-unguard! ui-held ui-holding? ui-link ui-link-listen!
-         ui-link-handler! ui-title! ui-titles! ui-title-first! ui-drawn!)
+         ui-link-handler! ui-title! ui-titles! ui-title-first! ui-drawn! ui-join! ui-joined! ui-router!
+         ui-router-joined? ui-router-navigate! ui-router-url ui-router-base ui-router-state ui-router-wait!
+         ui-router-done! ui-router-busy?)
 
 ;; ---- run-time support: slots ----
 
@@ -225,10 +227,15 @@
   (ui-root! render))
 
 (define (ui-render!)
-  (for ([k u32 0]) (< k root-count) (+= k 1) ((@ roots k)))
-  (ui-titles!)
-  (let ([f flush]) (when (!= f 0) (f)))
-  (let ([d drawn]) (when (!= d 0) (d))))
+  (if (!= draw-with 0)
+      (draw-with)
+      (begin
+        (for ([k u32 0]) (< k root-count) (+= k 1) ((@ roots k)))
+        (ui-titles!)
+        (let ([f flush]) (when (!= f 0) (f)))
+        (let ([d drawn]) (when (!= d 0) (d))))))
+
+(define (ui-render-idle!) (when (== depth 0) (ui-render!)))
 
 (define (wrong-type! [who string] [kind string] [declared string] [given string])
   (let ([b (make-buffer)])
@@ -358,14 +365,18 @@
 ;; ui-route! makes route, of the type named type, the current route and gives it to the components that take routes,
 ;; then draws.
 (define (ui-route! [route (ptr void)] [type string])
+  (routes! route type)
+  (for ([k u32 0]) (< k copy-count) (+= k 1) ((-> (+ (cast (ptr ui-copy) copies) k) routes) route type))
+  (when (== depth 0) (ui-render!)))
+
+(define (routes! [route (ptr void)] [type string])
   (set! route-now route)
   (set! route-type type)
   (let ([l route-listeners])
     (while (!= l 0)
       (route-type! (-> l type))
       ((-> l deliver) (-> l instance) route ui-update!)
-      (set! l (-> l next))))
-  (when (== depth 0) (ui-render!)))
+      (set! l (-> l next)))))
 
 (define (ui-guard! [i (ptr ui-instance)] [blocking (fn ((ptr void)) -> bool)] [held (fn ((ptr ui-instance) string))])
   (let ([g (cast (ptr ui-guard) (malloc (sizeof ui-guard)))])
@@ -393,6 +404,8 @@
         ((-> g held) (-> g instance) url)
         (return #t))
       (set! g (-> g next)))
+    (for ([k u32 0]) (< k copy-count) (+= k 1)
+      (when ((-> (+ (cast (ptr ui-copy) copies) k) held) url) (return #t)))
     #f))
 
 (define (ui-holding?) -> bool
@@ -400,6 +413,8 @@
     (while (!= g 0)
       (when ((-> g blocking) (-> (-> g instance) state)) (return #t))
       (set! g (-> g next)))
+    (for ([k u32 0]) (< k copy-count) (+= k 1)
+      (when ((-> (+ (cast (ptr ui-copy) copies) k) holding)) (return #t)))
     #f))
 
 ;; A link's click listener. The router, once attached, answers clicks; download is whether the link has a download
@@ -429,9 +444,12 @@
 (define (ui-title-first! [s string]) (set! title-first (string-copy s)))
 
 (define (ui-title! [s string])
-  (set! title-given s)
-  (set! titled #t)
-  (set! title-used #t))
+  (if (!= title-with 0)
+      (title-with s)
+      (begin
+        (set! title-given s)
+        (set! titled #t)
+        (set! title-used #t))))
 
 (define (ui-titles!)
   (when title-used
@@ -441,6 +459,81 @@
         (set! title-shown (string-copy t))
         (dom-write-text! dom-document "title" title-shown))))
   (set! titled #f))
+
+;; ---- run-time support: copies ----
+
+;; A component that another copy of web-ui attaches joins this copy to that one before it starts. The attaching copy
+;; gives its event reads, its drawing, its link handler, its route, its titles and its router, and takes this copy's
+;; routes and guards. A component from web-ui 0.10.2 has no ui-join! and joins nothing.
+(typedef ui-join (fn ((fn (string) -> string) (fn (string) -> f64) (fn (u32 u32 string) -> bool) ui-render (fn (bool))
+                      (ptr void) string (fn (string)) (fn (string bool bool (slice u8))) (fn () -> string)
+                      (fn () -> string) (fn () -> (slice u8)) ui-render ui-render (fn () -> bool)
+                      (fn ((fn ((ptr void) string)) (fn (string) -> bool) (fn () -> bool))))))
+(struct ui-copy [routes (fn ((ptr void) string))] [held (fn (string) -> bool)] [holding (fn () -> bool)])
+
+(define joined bool #f)
+(define draw-with ui-render 0)
+(define title-with (fn (string)) 0)
+(define copies (array ui-copy 8))
+(define copy-count u32 0)
+
+;; The router's entry points, which router-start! gives. In a copy that another has joined, they are the other's.
+(define router-joined bool #f)
+(define router-navigate (fn (string bool bool (slice u8))) 0)
+(define router-url (fn () -> string) 0)
+(define router-base (fn () -> string) 0)
+(define router-state (fn () -> (slice u8)) 0)
+(define router-wait ui-render 0)
+(define router-done ui-render 0)
+(define router-busy (fn () -> bool) 0)
+
+(define (ui-router! [navigate (fn (string bool bool (slice u8)))] [url (fn () -> string)] [base (fn () -> string)]
+                    [state (fn () -> (slice u8))] [wait ui-render] [done ui-render] [busy (fn () -> bool)])
+  (set! router-navigate navigate)
+  (set! router-url url)
+  (set! router-base base)
+  (set! router-state state)
+  (set! router-wait wait)
+  (set! router-done done)
+  (set! router-busy busy))
+
+(define (ui-join! [texts (fn (string) -> string)] [numbers (fn (string) -> f64)] [is (fn (u32 u32 string) -> bool)]
+                  [draw ui-render] [link (fn (bool))] [route (ptr void)] [type string] [title (fn (string))]
+                  [navigate (fn (string bool bool (slice u8)))] [url (fn () -> string)] [base (fn () -> string)]
+                  [state (fn () -> (slice u8))] [wait ui-render] [done ui-render] [busy (fn () -> bool)]
+                  [join (fn ((fn ((ptr void) string)) (fn (string) -> bool) (fn () -> bool)))])
+  (unless joined
+    (set! joined #t)
+    (ui-read-with! texts numbers is)
+    (set! draw-with draw)
+    (set! link-handler link)
+    (set! route-now route)
+    (set! route-type type)
+    (set! title-with title)
+    (unless (== navigate 0)
+      (set! router-joined #t)
+      (ui-router! navigate url base state wait done busy))
+    (join routes! ui-held ui-holding?)))
+
+(define (copy-joined! [routes (fn ((ptr void) string))] [held (fn (string) -> bool)] [holding (fn () -> bool)])
+  (when (== copy-count 8) (host-trap "ui: more than 8 copies of web-ui are attached"))
+  (set! (@ copies copy-count) (ui-copy #:routes routes #:held held #:holding holding))
+  (+= copy-count 1))
+
+;; ui-joined! joins the copy whose ui-join! is given to this one.
+(define (ui-joined! [join ui-join])
+  (join event-texts event-numbers node-is ui-render-idle! link-handler route-now route-type ui-title! router-navigate
+        router-url router-base router-state router-wait router-done router-busy copy-joined!))
+
+(define (ui-router-joined?) -> bool router-joined)
+(define (ui-router-navigate! [href string] [replace bool] [keep bool] [app (slice u8)])
+  (router-navigate href replace keep app))
+(define (ui-router-url) -> string (router-url))
+(define (ui-router-base) -> string (router-base))
+(define (ui-router-state) -> (slice u8) (router-state))
+(define (ui-router-wait!) (router-wait))
+(define (ui-router-done!) (router-done))
+(define (ui-router-busy?) -> bool (router-busy))
 
 ;; ---- run-time support: traps ----
 
@@ -671,6 +764,17 @@
   ;; made it.
   (define (copy-root [r datum]) -> datum
     (let ([l (if (== (car r) 'ui-view) (cddddr r) (cdr (cddddr r)))]) (if (pair? l) (car l) 0)))
+
+  ;; The ui-join! of the copy that made a view or component, or 0 when a web-ui older than 0.11 made it.
+  (define (copy-join [r datum]) -> datum
+    (let ([l (if (== (car r) 'ui-view) (cddddr r) (cdr (cddddr r)))]) (if (and (pair? l) (pair? (cdr l))) (cadr l) 0)))
+
+  ;; The code that starts a root made by the copy whose view or component r is, given the start and the render.
+  (define (root-start [r datum] [start datum]) -> datum
+    (cond [(free-identifier=? (copy-root r) #'ui-root-with!)
+           `(,start ,#`(ui-root-with! render event-texts event-numbers node-is flush))]
+          [(!= (copy-join r) 0) `(,#`(ui-joined! #,(copy-join r)) ,start ,#'(ui-root! render))]
+          [else `(,start ,#`(#,(copy-root r) render event-texts event-numbers node-is flush))]))
 
   (define (older! [head datum] [r datum])
     (when (== (copy-root r) 0)
@@ -1263,10 +1367,11 @@
                  (view-value (quote-syntax ((#,(-> b state) #,(named '"mount") #,(named '"update") #,(-> b unmounter))
                                             (#,@parameter)
                                             #,(if listening message-type #'#f)
-                                            ui-root-with!)))))))]))
+                                            ui-root-with!
+                                            ui-join!)))))))]))
 
   (define (view-value [parts datum]) -> datum
-    (let ([l (syntax->list parts)]) `(ui-view ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l))))
+    (let ([l (syntax->list parts)]) `(ui-view ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l) ,@(cddddr l))))
 
   ;; ---- components ----
 
@@ -1408,10 +1513,11 @@
                    (component-value (quote-syntax ((#,instance #,mount #,update-fn #,unmount) (#,@parameter)
                                                    #,(if (== events 0) #'#f events)
                                                    #,(if (== messages 0) #'#f messages)
-                                                   ui-root-with!))))))))]))
+                                                   ui-root-with!
+                                                   ui-join!))))))))]))
 
   (define (component-value [parts datum]) -> datum
-    (let ([l (syntax->list parts)]) `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l) ,(car (cddddr l)))))
+    (let ([l (syntax->list parts)]) `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l) ,@(cddddr l))))
 
   (define (constructed-type [who datum] [e datum]) -> datum
     (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
@@ -1449,8 +1555,7 @@
                       (define state #,(car names))
                       (define (render) (#,(caddr names) (& state) #,@(cdr l)))
                       (define (#,mount)
-                        (#,(cadr names) (& state) #,node 0 #,@(cdr l))
-                        (#,(copy-root v) render event-texts event-numbers node-is flush))))]
+                        #,@(root-start v #`(#,(cadr names) (& state) #,node 0 #,@(cdr l))))))]
                [(== c 0) (raise-syntax-error 'ui-root "expected a component, (c ([parameter value] ...)), or a view, (v e ...)" call)]
                [else
                 (older! head c)
@@ -1461,8 +1566,7 @@
                       (define instance #,(car names))
                       (define (render) (#,(caddr names) (& instance) #,@values))
                       (define (#,mount)
-                        (#,(cadr names) (& instance) #,node 0 0 0 #,@values)
-                        (#,(copy-root c) render event-texts event-numbers node-is flush))))]))]
+                        #,@(root-start c #`(#,(cadr names) (& instance) #,node 0 0 0 #,@values)))))]))]
       [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...))) or (ui-root mount node (v e ...))" s)])))
 
 (define-syntax messages messages-form)

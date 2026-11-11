@@ -8,7 +8,8 @@
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
 ;; moves to the start of the document, its title is announced, and the page scrolls to the URL's fragment or its top,
 ;; or back to where it was for Back, Forward and a reload. The router's state starts each entry's state: a mark, the
-;; entry's place in the history, and where the page was scrolled.
+;; entry's place in the history, and where the page was scrolled. In a copy of web-ui that another copy has joined
+;; (ui.sub), navigating and the route's URL are the other copy's router's.
 (require-unqualified "ui.sub")
 (require-unqualified host/events)
 (require-unqualified host/web/history)
@@ -260,6 +261,7 @@
     (free (-> s items))
     (free (-> href bytes)))
   (ui-route! route type)
+  (ui-router! navigate-with! route-url router-base route-state navigation-wait! navigation-done! navigating?)
   (set! (-> popped handle) heard-pop)
   (history-listen (& popped))
   (set! (-> leaving handle) heard-leave)
@@ -273,7 +275,8 @@
 ;; ---- navigating from code ----
 
 (define (navigate-with! [href string] [replace bool] [keep bool] [app (slice u8)])
-  (unless (went! href replace keep app) (if replace (location-replace href 0) (location-assign href 0))))
+  (cond [(ui-router-joined?) (ui-router-navigate! href replace keep app)]
+        [(not (went! href replace keep app)) (if replace (location-replace href 0) (location-assign href 0))]))
 
 (define (navigate! [href string]) (navigate-with! href #f #f none))
 
@@ -283,20 +286,22 @@
 
 (define (navigate-forward!) (history-forward))
 
-(define (route-url) -> string url)
+(define (route-url) -> string (if (ui-router-joined?) (ui-router-url) url))
 
 ;; The app's part of the current entry's state, until the next navigation.
 (define (route-state) -> (slice u8)
+  (when (ui-router-joined?) (return (ui-router-state)))
   (let* ([s (history-state)] [app (app-in s)] [p (cast (ptr u8) (arena-alloc (& held) (-> app length)))])
     (memcpy p (-> app items) (-> app length))
     (free (-> s items))
     (slice p (-> app length))))
 
-(define (navigating?) -> bool (> waits 0))
+(define (navigating?) -> bool (if (ui-router-joined?) (ui-router-busy?) (> waits 0)))
 
-(define (navigation-wait!) (+= waits 1))
+(define (navigation-wait!) (if (ui-router-joined?) (ui-router-wait!) (+= waits 1)))
 
 (define (navigation-done!)
+  (when (ui-router-joined?) (return (ui-router-done!)))
   (when (> waits 0)
     (-= waits 1)
     (when (and (== waits 0) due) (settle!))))
@@ -307,10 +312,10 @@
     (buffer-free! b)
     (cast string (slice p (-> bytes length)))))
 
-(define (router-current? [target string]) -> bool (== target (url-target url)))
+(define (router-current? [target string]) -> bool (== target (url-target (route-url))))
 
 ;; The directory of the document's base URL, without its final slash.
-(define (router-base) -> string base)
+(define (router-base) -> string (if (ui-router-joined?) (ui-router-base) base))
 
 ;; (route-href (case value ...)) writes a route's target, and (route-current? (case value ...)) tells whether the
 ;; document is at it. case alone stands for a case without values.

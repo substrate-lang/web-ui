@@ -1,0 +1,46 @@
+;; A component with routes that a second copy of web-ui makes (support/twin.sub), put in the document by this copy's
+;; attach. The second copy's links, guard, titles, route-href, route-current? and navigate! use this copy's router.
+(require twin twin/web-ui)
+(require-unqualified web-ui)
+(require-unqualified std/http/routable)
+(require-unqualified "../places.sub")
+
+(struct trip-state [at place] [unsaved bool] [stopped string] [marked bool])
+
+(variant trip-message [went [to place]] [edited] [stopped [url string]] [marked] [three])
+
+(define (trip-update [s (ptr trip-state)] [m (ptr trip-message)])
+  (match m
+    [(went to) (set! (-> s at) to)]
+    [edited (set! (-> s unsaved) #t)]
+    [(stopped url) (set! (-> s stopped) (string-copy url))]
+    [marked (set! (-> s marked) #t)]
+    [three (twin:navigate! (twin:route-href (user 3)))]))
+
+(define (unsaved? [s (ptr trip-state)]) -> bool (-> s unsaved))
+
+(twin:component (trip)
+  #:state [s trip-state]
+  #:messages trip-message
+  #:update trip-update
+  #:route went
+  #:leaving [unsaved? stopped]
+  (div
+    (a ([href (twin:route-href (user 7))] [id "user"] ["aria-current" (if (twin:route-current? (user 7)) "page" "false")])
+       "User 7")
+    (a ([href (twin:route-href draft)] [id "draft"]) "Draft")
+    (button ([on click marked]) "Mark")
+    (button ([on click three]) "Three")
+    (p ([id "mark"]) (text (if (-> s marked) "marked" "")))
+    (match (-> s at)
+      [home (title "Home") (p ([id "page"]) "home")]
+      [(user id) (title "User") (p ([id "page"]) "user " (int (cast i64 id)))]
+      [draft
+       (title "Draft")
+       (p ([id "page"]) "draft")
+       (button ([on click edited]) "Edit")
+       (p ([id "stopped"]) (text (-> s stopped)))]
+      [long (title "Long") (p ([id "page"]) "long")]
+      [lost (title "Lost") (p ([id "page"]) "lost")])))
+
+(attach #:routes place ["root" (trip)])

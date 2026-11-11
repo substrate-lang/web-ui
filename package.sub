@@ -4,4 +4,6 @@
   (exports examples/counter examples/rows router trace ui)
   (tests (browser))
   (sites (routed "tests/routed.sub" (base "/"))
-         (outer "tests/outer.sub" (base "/") (mount "/inner/" routed))))
+         (outer "tests/outer.sub" (base "/") (mount "/inner/" routed))
+         (twin-routed "tests/twin/routed.sub" (base "/"))
+         (twinned "tests/outer.sub" (base "/") (mount "/twin/" twin-routed))))
