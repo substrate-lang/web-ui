@@ -1,4 +1,4 @@
-;; A counter, the smallest complete web page.
+;; A counter, the smallest complete web program.
 (require-unqualified "../web-ui.sub")
 
 (struct state [count i32])

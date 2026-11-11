@@ -1,4 +1,4 @@
-;; A test helper: prints the page changes (patches) that views produce, as text.
+;; A test helper: prints the changes to the document (patches) that views produce, as text.
 (require-unqualified "ui.sub")
 (require-unqualified std/web/patches)
 (require-unqualified std/web/gpu-commands)

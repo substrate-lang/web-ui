@@ -1,9 +1,9 @@
 # web-ui
 
-A UI library for web pages, built on
+A UI library for web programs, built on
 [Substrate](https://github.com/substrate-lang/substrate) and its std/web. Views
-compile to changes of the page. A component joins a view with its state,
-messages and update, and attach puts components in elements of the page. It is
-experimental.
+compile to changes of the document. A component joins a view with its state,
+messages and update, and attach puts components and views in elements of the
+document. It is experimental.
 
-    substrate test -A        # the tests, two of them in Chromium
+    substrate test -A        # the tests, three of them in Chromium

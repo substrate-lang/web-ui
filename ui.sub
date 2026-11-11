@@ -1,4 +1,4 @@
-;; Views and components: a small language for describing web pages, compiled to patches (std/web/patches).
+;; Views and components: a small language for describing the document, compiled to patches (std/web/patches).
 (require-unqualified host/events)
 (require-unqualified std/web/patches)
 (require-unqualified std/web/canvas)
@@ -106,7 +106,7 @@
 (define (ui-listener-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
   (ui-deliver (-> (cast (ptr ui-listener) tag) instance) (ui-heard tag)))
 
-;; The reads of the current event and of the page, by name (std/web/dom.sub).
+;; The reads of the current event and of the document, by name (std/web/dom.sub).
 (define event-texts (fn (string) -> string) 0)
 (define event-numbers (fn (string) -> f64) 0)
 (define node-is (fn (u32 u32 string) -> bool) 0)
