@@ -1,7 +1,8 @@
 ;; The router: the document's URL as a route, a value of a routable type (std/http/routable.sub), kept in step with the
 ;; browser's history and given to the components that take routes (#:route). attach starts it. A click on a link to a
-;; URL of the document's origin and under the base navigates in place, unless a key or a mouse button other than the
-;; first is held or the link has a target, a download attribute or rel external. So do navigate! and Back and Forward.
+;; URL that one of the routes matches navigates in place, unless a key or a mouse button other than the first is held or
+;; the link has a target, a download attribute or rel external. So do navigate! and Back and Forward. Other URLs are the
+;; browser's to load.
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
 ;; moves to the start of the document, its title is announced, and the page scrolls to the URL's fragment or its top,
 ;; or back to where it was for Back, Forward and a reload. The router's state starts each entry's state: a mark, the
@@ -27,7 +28,6 @@
 (define reader route-reader 0)
 (define size u32 0)
 (define type string "")
-(define base string "/")
 
 (define held arena)
 (define route (ptr void) 0)
@@ -79,10 +79,11 @@
 ;; ---- routes ----
 
 ;; Reads at into the arena as a route, which r is set to, and answers the URL of the route: at, or its canonical URL
-;; when the path moved.
-(define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))]) -> string
+;; when the path moved. read is set to what reading answered.
+(define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))] [read (ptr u32)]) -> string
   (let ([to (make-buffer)] [p (arena-alloc a size)] [found (copy a at)])
-    (when (== (reader a at p (& to)) url-moved)
+    (set! (@ read) (reader a at p (& to)))
+    (when (== (@ read) url-moved)
       (let ([b (make-buffer)] [fragment (url-fragment at)])
         (buffer-add-string! (& b) (url-origin at))
         (buffer-add-string! (& b) (buffer-string (& to)))
@@ -105,15 +106,12 @@
     (ui-route! route type)
     (arena-free (& old))))
 
-(define (under-base? [target string]) -> bool
-  (and (>= (-> target length) (-> base length)) (== (slice target 0 (-> base length)) base)))
-
-;; Navigates in place to href, resolved against the URL, and answers whether it did. A URL of another origin, or outside
-;; the base, is the browser's.
+;; Navigates in place to href, resolved against the URL, and answers whether it did. A URL of another origin, or one
+;; that no route matches, is the browser's.
 (define (went! [href string] [replace bool] [keep bool] [app (slice u8)]) -> bool
   (unless started (return #f))
   (let* ([next (make-arena)] [to (url-resolve (& next) url href)] [target (url-target to)])
-    (when (or (!= (url-origin to) (url-origin url)) (not (under-base? target)))
+    (when (!= (url-origin to) (url-origin url))
       (arena-free (& next))
       (return #f))
     (when (== target (url-target url))
@@ -126,7 +124,10 @@
       (set! scrolling (if keep 0 1))
       (settle!)
       (return #t))
-    (let* ([r (ptr void) 0] [at (route-of (& next) to (& r))])
+    (let* ([r (ptr void) 0] [read u32 0] [at (route-of (& next) to (& r) (& read))])
+      (when (or (== read url-missing) (== read url-bad))
+        (arena-free (& next))
+        (return #f))
       (when (ui-held at)
         (arena-free (& next))
         (return #t))
@@ -208,7 +209,7 @@
                   (begin
                     (set! url (copy (& held) href))
                     (settle!))
-                  (let* ([next (make-arena)] [r (ptr void) 0] [at (route-of (& next) href (& r))])
+                  (let* ([next (make-arena)] [r (ptr void) 0] [read u32 0] [at (route-of (& next) href (& r) (& read))])
                     (unless (== at href) (history-replace-state s at 0))
                     (commit! next r at)))))
         (free (-> s items))
@@ -220,15 +221,14 @@
 ;; ---- starting ----
 
 ;; router-start! reads the URL as a route of the type named t, size bytes long, before attach mounts the roots.
-(define (router-start! [r route-reader] [n u32] [t string] [b string])
+(define (router-start! [r route-reader] [n u32] [t string])
   (set! reader r)
   (set! size n)
   (set! type t)
-  (set! base b)
   (set! started #t)
   (history-set-scroll-restoration "manual")
-  (let* ([href (location-href)] [s (history-state)] [p (ptr void) 0] [at (route-of (& held) href (& p))]
-         [out (make-buffer)])
+  (let* ([href (location-href)] [s (history-state)] [p (ptr void) 0] [read u32 0]
+         [at (route-of (& held) href (& p) (& read))] [out (make-buffer)])
     (set! route p)
     (set! url at)
     (if (ours? s)

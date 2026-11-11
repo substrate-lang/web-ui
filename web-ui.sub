@@ -53,20 +53,17 @@
 
   ;; (attach option ... ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element
   ;; with its id. A view, (v e ...), can take a component's place. Once they are drawn, main scrolls to the element that
-  ;; the URL's fragment names. The option #:routes T, a routable type, starts the router with the URL read as a T, and
-  ;; #:base "/path/" gives the part of the site that the router keeps, all of it unless given.
+  ;; the URL's fragment names. The option #:routes T, a routable type, starts the router with the URL read as a T.
   (define (attach-form [s datum]) -> datum
     (syntax-match s
       [(_ given ...)
-       (let ([roots nil] [mounts nil] [k u32 0] [items given] [routes datum 0] [base datum #'"/"]
+       (let ([roots nil] [mounts nil] [k u32 0] [items given] [routes datum 0]
              [reader (datum->syntax #'here 'attach-route-read 0)])
          (while (and (pair? items) (keyword? (syntax-e (car items))))
            (let ([word (syntax-e (car items))])
              (unless (pair? (cdr items)) (raise-syntax-error 'attach "expected a value after the option" (car items)))
-             (cond [(== word '#:routes) (set! routes (cadr items))]
-                   [(== word '#:base) (set! base (cadr items))]
-                   [else
-                    (raise-syntax-error 'attach "the options are #:routes TYPE and #:base \"/path/\"" (car items))])
+             (unless (== word '#:routes) (raise-syntax-error 'attach "the option is #:routes TYPE" (car items)))
+             (set! routes (cadr items))
              (set! items (cddr items))))
          (for-each (lambda ([p datum])
                      (let ([l (syntax->list p)])
@@ -93,7 +90,7 @@
                  (attach-start!)
                  #,@(if (== routes 0)
                         nil
-                        `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes) #,base)))
+                        `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes))))
                  #,@(reverse mounts)
                  (ui-titles!)
                  (dom-flush!)
