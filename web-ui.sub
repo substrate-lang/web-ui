@@ -1,7 +1,9 @@
-;; The language of web pages: ui.sub's views and components, and attach, which puts components in elements of the page.
+;; The language of web user interfaces: ui.sub's views and components, and attach, which puts them in elements of the
+;; document.
 (require-unqualified ui "ui.sub")
 (require-unqualified events host/events)
 (require-unqualified dom std/web/dom)
+(require-unqualified host/web/location)
 
 (provide (all-from-out ui) (all-from-out events) (all-from-out dom) attach prevent-default! stop-propagation!)
 
@@ -22,10 +24,22 @@
   (ui-read-with! dom-event-text dom-event-number dom-is)
   (ui-flush-with! dom-flush!))
 
+;; Scrolls to the element that the URL's fragment names, as a browser does for a document it loads.
+(define (attach-scroll!)
+  (let ([url (location-get)] [i u32 0])
+    (while (and (< i (-> url length)) (!= (@ url i) #\#)) (+= i 1))
+    (when (< (+ i 1) (-> url length))
+      (let ([n (dom-element (slice url (+ i 1) (-> url length)))])
+        (unless (== n 0)
+          (dom-call! n "scrollIntoView")
+          (dom-flush!))))
+    (free (-> url bytes))))
+
 (begin-for-syntax
   (require-unqualified compiler/macros)
 
-  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element with its id.
+  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component, or view (v e ...), in the
+  ;; element with its id. Once they are drawn, it scrolls to the element that the URL's fragment names.
   (define (attach-form [s datum]) -> datum
     (syntax-match s
       [(_ given ...)
@@ -33,18 +47,19 @@
          (for-each (lambda ([p datum])
                      (let ([l (syntax->list p)])
                        (unless (and (!= l 0) (== (length l) 2) (string? (syntax-e (car l))))
-                         (raise-syntax-error 'attach "expected [\"id\" (component ([parameter value] ...))]" p))
+                         (raise-syntax-error 'attach "expected [\"id\" (component ([parameter value] ...))] or [\"id\" (view e ...)]" p))
                        (let ([mount (datum->syntax #'here (string->symbol (format-message "mount~a" `(,(make-integer k)))) 0)])
                          (set! roots (cons #`(ui-root #,mount (attach-node #,(car l)) #,(cadr l)) roots))
                          (set! mounts (cons #`(#,mount) mounts))
                          (+= k 1))))
                    given)
-         (when (null? roots) (raise-syntax-error 'attach "expected at least one [\"id\" (component ...)]" s))
+         (when (null? roots) (raise-syntax-error 'attach "expected at least one [\"id\" (component ...)] or [\"id\" (view ...)]" s))
          #`(begin
              #,@(reverse roots)
              (define (main)
                (attach-start!)
                #,@(reverse mounts)
-               (dom-flush!))))])))
+               (dom-flush!)
+               (attach-scroll!))))])))
 
 (define-syntax attach attach-form)

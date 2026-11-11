@@ -1,0 +1,11 @@
+;; A view with its own stylesheet, put in a tall document by attach, which scrolls to the paragraph that the URL's
+;; fragment names.
+(require-unqualified web-ui)
+
+(view (tall)
+  #:style ".gap { height: 3000px }"
+  (div ([class "gap"]) "top")
+  (p ([id "end"]) "the end")
+  (div ([class "gap"]) "bottom"))
+
+(attach ["root" (tall)])

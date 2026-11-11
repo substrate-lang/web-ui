@@ -1,0 +1,6 @@
+the banner is mounted, with its stylesheet
+stylesheet .banner { color: green }
+template 1 <h1 class="banner"><!--t--></h1>
+clone 1 as #2 with 1 in #0 before #0
+text #3 "Hello"
+--

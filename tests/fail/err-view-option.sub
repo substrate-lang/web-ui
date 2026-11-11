@@ -1,0 +1,5 @@
+;; A view with an option it does not take.
+(require-unqualified web-ui/ui)
+
+(view (row) #:state "x" (li "row"))
+(define (main) 0)

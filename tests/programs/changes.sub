@@ -1,0 +1,18 @@
+;; A view put in a node, with its own stylesheet. Each step prints the patches of the drawing after it.
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
+(provide main)
+
+(view (banner [title string])
+  #:style ".banner { color: green }"
+  (h1 ([class "banner"]) (text title)))
+
+(ui-root mount-banner 0 (banner "Hello"))
+
+(define (step [what string]) (printf "~a\n" what))
+
+(define (main)
+  (ui-flush-with! trace-patches!)
+  (step "the banner is mounted, with its stylesheet")
+  (mount-banner)
+  (trace-patches!))

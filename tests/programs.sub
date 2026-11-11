@@ -6,6 +6,7 @@
 (require node-attribute "programs/node-attribute.sub")
 (require one-message "programs/one-message.sub")
 (require views "programs/views.sub")
+(require changes "programs/changes.sub")
 
 (test components #:output-file "programs/components.out" (components:main))
 (test err-emit-type #:traps "emit!: this component's events are counter-event, not other-event" (err-emit-type:main))
@@ -14,3 +15,4 @@
 (test node-attribute #:output-file "programs/node-attribute.out" (node-attribute:main))
 (test one-message #:output-file "programs/one-message.out" (one-message:main))
 (test views #:output-file "programs/views.out" (views:main))
+(test changes #:output-file "programs/changes.out" (changes:main))

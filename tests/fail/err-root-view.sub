@@ -1,0 +1,10 @@
+;; A view with listeners put in a node, where no component takes its messages.
+(require-unqualified web-ui/ui)
+
+(variant row-message [picked])
+(messages row-message)
+
+(view (row) (li ([on click picked]) "row"))
+
+(ui-root mount-row 0 (row))
+(define (main) 0)

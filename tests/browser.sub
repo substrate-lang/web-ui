@@ -37,3 +37,10 @@
     (expect-text b (by-css "tbody tr:last-child td.id") "2000")
     (browser-click! b (by-role "button" "clear"))
     (expect-missing b (by-css "tbody tr"))))
+
+(test fragment
+  (with-browser (b "fragment.sub")
+    (expect (>= (-> (browser-box b (by-css "#end")) y) 3000.0)))
+  (with-browser (b "fragment.sub" #:url "#end")
+    (expect-text b (by-css "#end") "the end")
+    (expect (< (-> (browser-box b (by-css "#end")) y) 100.0))))

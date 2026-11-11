@@ -972,18 +972,23 @@
     (syntax-match s
       [(_ (? identifier? m)) #`(define-syntax #,(message-type-name s) (quote-syntax #,m))]))
 
-  ;; (view (v parameter ...) child ...). #:messages TYPE after the parameters gives the view's listeners a message type
-  ;; other than the module's, and #:messages #f gives them none.
+  ;; (view (v parameter ...) option ... child ...). The option #:messages TYPE gives the view's listeners a message type
+  ;; other than the module's, and #:messages #f gives them none. #:style css is a stylesheet, added to the document when
+  ;; the view is first mounted.
   (define (view-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? v) parameter ...) child ...)
-       (let* ([declared (message-type-name s)]
-              [given (and (pair? child) (== (syntax-e (car child)) '#:messages))]
-              [children (if given (cddr child) child)])
-         (when (and given (not (pair? (cdr child)))) (fail s '"expected #:messages TYPE"))
+       (let* ([declared (message-type-name s)] [options nil] [children child])
+         (while (and (pair? children) (keyword? (syntax-e (car children))))
+           (unless (!= (memq (syntax-e (car children)) '(#:messages #:style)) 0)
+             (fail (car children) '"the options are #:messages TYPE and #:style css"))
+           (unless (pair? (cdr children)) (fail (car children) '"expected a value after the option"))
+           (set! options (cons (cons (syntax-e (car children)) (cadr children)) options))
+           (set! children (cddr children)))
          (set! view-name v)
          (set! message-type
-               (cond [given (if (== (syntax-e (cadr child)) '#f) 0 (cadr child))]
+               (cond [(!= (assq '#:messages options) 0)
+                      (if (== (syntax-e (option-of options '#:messages)) '#f) 0 (option-of options '#:messages))]
                      [(== (identifier-binding-kind declared) 'compile-time-value) (syntax-local-value declared)]
                      [else 0]))
          (set! listening #f)
@@ -992,12 +997,14 @@
          (set! fills nil)
          (set! definitions nil)
          (set! in-rows #f)
-         (let ([b (new-block #t)])
+         (let ([b (new-block #t)] [style (option-of options '#:style)] [styled (named '"styled")])
            (compile-children! b children)
            (finish! b)
            #`(begin
                #,@(reverse definitions)
+               #,@(if (== style 0) nil `(,#`(define #,styled bool #f)))
                (define (#,(named '"mount") [bs (ptr #,(-> b state))] [parent u32] [before u32] #,@parameter)
+                 #,@(if (== style 0) nil `(,#`(unless #,styled (set! #,styled #t) (dom-stylesheet! #,style))))
                  #,@(mount-code b))
                (define (#,(named '"update") [bs (ptr #,(-> b state))] #,@parameter)
                  #,@(statements (-> b update)))
@@ -1051,12 +1058,12 @@
                   [instance (component-name name '"instance")] [mount (component-name name '"mount")]
                   [update-fn (component-name name '"update")] [unmount (component-name name '"unmount")]
                   [adapter (component-name name '"message")] [trap (component-name name '"trap")]
-                  [styled (component-name name '"styled")]
                   [names (for/list ([p parameter]) (car (syntax->list p)))])
              #`(begin
-                 (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages) #,@children)
+                 (view (#,view [#,s-name (ptr #,t)] #,@parameter) #:messages #,(if (== messages 0) #'#f messages)
+                       #,@(if (== style 0) nil `(,#'#:style ,style))
+                       #,@children)
                  (struct #,instance [head ui-instance] [state #,t] [view #,(component-name view '"state")])
-                 #,@(if (== style 0) nil `(,#`(define #,styled bool #f)))
                  #,@(if (== messages 0)
                         nil
                         `(,#`(define (#,adapter [state (ptr void)] [message (ptr void)])
@@ -1070,11 +1077,6 @@
                                        #,(if (== messages 0) #'0 adapter) #,(if (== trapped 0) #'0 trap)
                                        #,(type-text messages) #,(type-text events) heard heard-count)
                    (memset (& (-> i state)) 0 (sizeof #,t))
-                   #,@(if (== style 0)
-                          nil
-                          `(,#`(unless #,styled
-                                 (set! #,styled #t)
-                                 (dom-stylesheet! #,style))))
                    (let ([outer (ui-enter! (& (-> i head)))])
                      #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
                      (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
@@ -1117,22 +1119,35 @@
       [_ (raise-syntax-error 'send! "expected (send! (message value ...))" s)]))
 
   ;; (ui-root mount node (c ([parameter value] ...))) defines mount. mount puts an instance of c in the node and makes
-  ;; it a root, and each drawing of the page updates the roots.
+  ;; it a root, and each drawing updates the roots. A root can also be a view, (v e ...), when it has no listeners.
   (define (root-form [s datum]) -> datum
     (syntax-match s
       [(_ (? identifier? mount) node call)
-       (let* ([l (syntax->list call)] [c (if (and (!= l 0) (pair? l) (identifier? (car l))) (component-of (car l)) 0)])
-         (when (== c 0) (raise-syntax-error 'ui-root "expected a component: (c ([parameter value] ...))" call))
-         (let* ([names (syntax->list (cadr c))] [parsed (component-attributes call l c)] [values (car parsed)])
-           (unless (null? (cdr parsed))
-             (raise-syntax-error 'ui-root "a component put in an element has no parent to listen to its events" call))
-           #`(begin
-               (define instance #,(car names))
-               (define (render) (#,(caddr names) (& instance) #,@values))
-               (define (#,mount)
-                 (#,(cadr names) (& instance) #,node 0 0 0 #,@values)
-                 (ui-root! render)))))]
-      [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...)))" s)])))
+       (let* ([l (syntax->list call)] [head (if (and (!= l 0) (pair? l) (identifier? (car l))) (car l) 0)]
+              [v (if (== head 0) 0 (view-of head))] [c (if (or (== head 0) (!= v 0)) 0 (component-of head))])
+         (cond [(!= v 0)
+                (let ([names (view-names v)])
+                  (check-arguments! call v (cdr l))
+                  (unless (== (view-messages v) 0)
+                    (raise-syntax-error 'ui-root "a view put in an element has no component to take its messages" call))
+                  #`(begin
+                      (define state #,(car names))
+                      (define (render) (#,(caddr names) (& state) #,@(cdr l)))
+                      (define (#,mount)
+                        (#,(cadr names) (& state) #,node 0 #,@(cdr l))
+                        (ui-root! render))))]
+               [(== c 0) (raise-syntax-error 'ui-root "expected a component, (c ([parameter value] ...)), or a view, (v e ...)" call)]
+               [else
+                (let* ([names (syntax->list (cadr c))] [parsed (component-attributes call l c)] [values (car parsed)])
+                  (unless (null? (cdr parsed))
+                    (raise-syntax-error 'ui-root "a component put in an element has no parent to listen to its events" call))
+                  #`(begin
+                      (define instance #,(car names))
+                      (define (render) (#,(caddr names) (& instance) #,@values))
+                      (define (#,mount)
+                        (#,(cadr names) (& instance) #,node 0 0 0 #,@values)
+                        (ui-root! render))))]))]
+      [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...))) or (ui-root mount node (v e ...))" s)])))
 
 (define-syntax messages messages-form)
 (define-syntax view view-form)
