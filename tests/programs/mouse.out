@@ -1,19 +1,19 @@
 mount
 template 1 <canvas width="64" height="36" data-n></canvas>
-clone 1 as #2 with 1 in #0 before #0
-listen #3 mousedown
-listen-window #3 mousemove
-listen-window #3 pointerlockchange
+clone 1 as #3 with 1 in #0 before #0
+listen #4 mousedown
+listen-window #4 mousemove
+listen-window #4 pointerlockchange
 --
 events
   clicked: button 2 at x 40
   moved: 12 -5
   the lock changed: locked 1
 asking for the lock
-call #3 requestPointerLock
+call #4 requestPointerLock
 --
 asking again, by changing the number
-call #3 requestPointerLock
+call #4 requestPointerLock
 --
 nothing changed
 --

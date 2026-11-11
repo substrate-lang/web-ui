@@ -16,7 +16,6 @@
 (require-unqualified host/web/history)
 (require-unqualified host/web/location)
 (require-unqualified std/web/dom)
-(require-unqualified std/http/http)
 (require-unqualified std/http/url)
 (require-unqualified std/http/routable)
 
@@ -177,8 +176,8 @@
 ;; ---- events ----
 
 (define (key-held?) -> bool
-  (or (!= (dom-event-number "ctrlKey") 0.0) (!= (dom-event-number "metaKey") 0.0) (!= (dom-event-number "shiftKey") 0.0)
-      (!= (dom-event-number "altKey") 0.0)))
+  (or (!= (dom-read-number dom-event "ctrlKey") 0.0) (!= (dom-read-number dom-event "metaKey") 0.0)
+      (!= (dom-read-number dom-event "shiftKey") 0.0) (!= (dom-read-number dom-event "altKey") 0.0)))
 
 (define (has-word? [s string] [word string]) -> bool
   (let ([start u32 0])
@@ -188,41 +187,45 @@
         (set! start (+ i 1))))
     #f))
 
-(define (clicked)
-  (let ([target (dom-event-text "currentTarget.target")] [download string])
-    (unless (or (dom-event-attribute "currentTarget" "download" (& download))
-                (!= (dom-event-number "button") 0.0) (key-held?) (!= (dom-event-number "defaultPrevented") 0.0)
-                (and (> (-> target length) 0) (!= target "_self"))
-                (has-word? (dom-event-text "currentTarget.rel") "external"))
-      (when (went! (dom-event-text "currentTarget.href") #f #f none) (dom-event-call "preventDefault")))))
+(define (has-attribute? [method string] [name string]) -> bool
+  (!= (dom-call-number dom-event method (dom-values (dom-text name))) 0.0))
 
-;; The submitter's attribute when it has one, and else the form's.
-(define (chosen [own string] [form string]) -> string
-  (let ([value string])
-    (unless (dom-event-attribute "submitter" own (& value)) (dom-event-attribute "currentTarget" form (& value)))
-    value))
+(define (prevent!) (dom-call-now! dom-event "preventDefault" (dom-values)))
+
+(define (clicked)
+  (let ([target (dom-read-text dom-event "currentTarget.target")])
+    (unless (or (has-attribute? "currentTarget.hasAttribute" "download") (!= (dom-read-number dom-event "button") 0.0)
+                (key-held?) (!= (dom-read-number dom-event "defaultPrevented") 0.0)
+                (and (> (-> target length) 0) (!= target "_self"))
+                (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
+      (when (went! (dom-read-text dom-event "currentTarget.href") #f #f none) (prevent!)))))
+
+;; The submitter's property when it has the attribute, and else the form's.
+(define (chosen [attribute string] [own string] [form string]) -> string
+  (if (and (!= (dom-read-number dom-event "submitter.nodeType") 0.0)
+           (has-attribute? "submitter.hasAttribute" attribute))
+      (dom-read-text dom-event own)
+      (dom-read-text dom-event form)))
 
 (define (submitted)
-  (let ([method (chosen "formmethod" "method")] [target (chosen "formtarget" "target")]
-        [action (chosen "formaction" "action")] [rel string])
-    (dom-event-attribute "currentTarget" "rel" (& rel))
-    (unless (or (!= (dom-event-number "defaultPrevented") 0.0) (http-same? method "post") (http-same? method "dialog")
-                (and (> (-> target length) 0) (!= target "_self")) (has-word? rel "external"))
-      (let* ([a (make-arena)]
-             [to (if (== (-> action length) 0) url (url-resolve (& a) (dom-read-text dom-document "baseURI") action))]
-             [fragment (url-fragment to)] [b (make-buffer)])
-        (buffer-add-string! (& b) (url-origin to))
-        (buffer-add-string! (& b) (url-path (url-target to)))
+  (let ([method (chosen "formmethod" "submitter.formMethod" "currentTarget.method")]
+        [target (chosen "formtarget" "submitter.formTarget" "currentTarget.target")]
+        [action (chosen "formaction" "submitter.formAction" "currentTarget.action")])
+    (unless (or (!= (dom-read-number dom-event "defaultPrevented") 0.0) (== method "post") (== method "dialog")
+                (and (> (-> target length) 0) (!= target "_self"))
+                (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
+      (let ([fragment (url-fragment action)] [b (make-buffer)])
+        (buffer-add-string! (& b) (url-origin action))
+        (buffer-add-string! (& b) (url-path (url-target action)))
         (buffer-add-byte! (& b) #\?)
-        (buffer-add-string! (& b) (dom-event-form "currentTarget"))
+        (buffer-add-string! (& b) (dom-form-data dom-event "currentTarget"))
         (when (> (-> fragment length) 0)
           (buffer-add-byte! (& b) #\#)
           (buffer-add-string! (& b) fragment))
-        (when (went! (buffer-string (& b)) #f #f none) (dom-event-call "preventDefault"))
-        (buffer-free! (& b))
-        (arena-free (& a))))))
+        (when (went! (buffer-string (& b)) #f #f none) (prevent!))
+        (buffer-free! (& b))))))
 
-(define (followed) (if (== (dom-event-text "type") "submit") (submitted) (clicked)))
+(define (followed) (if (== (dom-read-text dom-event "type") "submit") (submitted) (clicked)))
 
 (define (heard-pop [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
   (let ([given (events-take-text)]) (free (-> given bytes)))
@@ -251,7 +254,7 @@
         (free (-> href bytes)))))
 
 (define (heard-leave [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
-  (when (ui-holding?) (dom-event-call "preventDefault")))
+  (when (ui-holding?) (prevent!)))
 
 ;; ---- starting ----
 

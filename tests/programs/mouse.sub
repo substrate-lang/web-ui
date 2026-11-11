@@ -23,7 +23,7 @@
   (cond [(== path "offsetX") 40.0] [(== path "movementX") 12.0]
         [(== path "movementY") -5.0] [(== path "button") 2.0] [else 0.0]))
 (define (node-is [node u32] [from u32] [path string]) -> bool
-  (and (== node 3) (== from dom-document) (== path "pointerLockElement")))
+  (and (== node 4) (== from dom-document) (== path "pointerLockElement")))
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))

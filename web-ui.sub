@@ -10,9 +10,13 @@
 (provide (all-from-out ui) (all-from-out router) (all-from-out events) (all-from-out dom) attach prevent-default!
          stop-propagation!)
 
-(define (prevent-default!) (dom-event-call "preventDefault"))
+(define (prevent-default!) (dom-call-now! dom-event "preventDefault" (dom-values)))
 
-(define (stop-propagation!) (dom-event-call "stopPropagation"))
+(define (stop-propagation!) (dom-call-now! dom-event "stopPropagation" (dom-values)))
+
+(define (event-text [path string]) -> string (dom-read-text dom-event path))
+
+(define (event-number [path string]) -> f64 (dom-read-number dom-event path))
 
 (define (attach-node [id string]) -> u32
   (let ([n (dom-element id)])
@@ -24,7 +28,7 @@
     n))
 
 (define (attach-start!)
-  (ui-read-with! dom-event-text dom-event-number dom-is)
+  (ui-read-with! event-text event-number dom-is)
   (ui-flush-with! dom-flush!)
   (ui-title-first! (dom-read-text dom-document "title")))
 
