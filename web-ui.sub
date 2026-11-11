@@ -25,7 +25,6 @@
   (ui-read-with! dom-event-text dom-event-number dom-is)
   (ui-flush-with! dom-flush!))
 
-;; Scrolls to the element that the URL's fragment names, as a browser does for a document it loads.
 (define (attach-scroll!)
   (let ([url (location-get)] [i u32 0] [a (make-arena)])
     (while (and (< i (-> url length)) (!= (@ url i) #\#)) (+= i 1))
@@ -41,8 +40,9 @@
 (begin-for-syntax
   (require-unqualified compiler/macros)
 
-  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component, or view (v e ...), in the
-  ;; element with its id. Once they are drawn, it scrolls to the element that the URL's fragment names.
+  ;; (attach ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element with its id.
+  ;; A view, (v e ...), can take a component's place. Once they are drawn, main scrolls to the element that the URL's
+  ;; fragment names.
   (define (attach-form [s datum]) -> datum
     (syntax-match s
       [(_ given ...)

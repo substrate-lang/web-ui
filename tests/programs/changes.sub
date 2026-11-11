@@ -1,5 +1,6 @@
-;; A view put in a node, with its own stylesheet; a component mounted again when its key changes; and a component that
-;; works out its state again when its parameter changes. Each step prints the patches of the drawing after it.
+;; Three cases: a view with its own stylesheet put in a node, a component that mounts again when its key changes, and a
+;; component that works out its state again when its parameter changes. Each step prints the patches of the drawing
+;; that follows it.
 (require-unqualified web-ui/ui)
 (require-unqualified web-ui/trace)
 (provide main)

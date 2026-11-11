@@ -1,5 +1,5 @@
-;; A view with its own stylesheet, put in a tall document by attach, which scrolls to the paragraph that the URL's
-;; fragment names.
+;; A tall document from a view with its own stylesheet. attach puts the view in the document and scrolls to the
+;; paragraph that the URL's fragment names.
 (require-unqualified web-ui)
 
 (view (tall)

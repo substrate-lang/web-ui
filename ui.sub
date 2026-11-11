@@ -945,7 +945,6 @@
                       fills))
           fn))))
 
-  ;; The key of (c ([parameter value] ...) #:key k), or 0.
   (define (key-of [l datum]) -> datum
     (while (and (pair? l) (pair? (cdr l)) (not (null? (cddr l)))) (set! l (cdr l)))
     (if (and (pair? l) (pair? (cdr l)) (== (syntax-e (car l)) '#:key)) (cadr l) 0))
@@ -1060,9 +1059,9 @@
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
   ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f and #:style css. Its instances each have a state, which
-  ;; the children see as s. #:init runs when an instance is mounted, and #:changed before a drawing whose parameters are
-  ;; not the ones of the drawing before, compared bit for bit; each takes the state and the parameters. The stylesheet
-  ;; is added to the document when the first instance is mounted.
+  ;; the children see as s. #:init runs when an instance is mounted. #:changed runs before a drawing whose parameters
+  ;; differ, bit for bit, from those of the drawing before. Both take the state and the parameters. The stylesheet is
+  ;; added to the document when the first instance is mounted.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
