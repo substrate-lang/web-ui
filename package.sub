@@ -1,9 +1,8 @@
 (package web-ui
   (version "0.10.2")
   (substrate "0.10.2")
+  (one-copy)
   (exports examples/counter examples/rows router trace ui)
   (tests (browser))
   (sites (routed "tests/routed.sub" (base "/"))
-         (outer "tests/outer.sub" (base "/") (mount "/inner/" routed))
-         (twin-routed "tests/twin/routed.sub" (base "/"))
-         (twinned "tests/outer.sub" (base "/") (mount "/twin/" twin-routed))))
+         (outer "tests/outer.sub" (base "/") (mount "/inner/" routed))))
