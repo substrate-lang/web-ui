@@ -24,15 +24,13 @@
          route-url route-state navigating? navigation-wait! navigation-done! route-href route-current? router-text
          router-current? router-base)
 
-(typedef route-reader (fn ((ptr arena) string (ptr void) (ptr buffer)) -> u32))
-(typedef route-missing (fn ((ptr void))))
+(typedef route-reader (fn ((ptr arena) string string (ptr void) (ptr buffer)) -> u32))
 
 (const mark u32 1919055219)
 (const header u32 24)
 
 (define started bool #f)
 (define reader route-reader 0)
-(define missing route-missing 0)
 (define size u32 0)
 (define type string "")
 (define base string "")
@@ -90,16 +88,10 @@
 ;; when the path moved. read is set to what reading answered.
 (define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))] [read (ptr u32)]) -> string
   (let ([to (make-buffer)] [p (arena-alloc a size)] [found (copy a at)])
-    (let* ([target (url-target at)] [n (-> base length)])
-      (if (and (> (-> target length) n) (== (slice target 0 n) base) (== (@ target n) #\/))
-          (set! (@ read) (reader a (slice target n) p (& to)))
-          (begin
-            (missing p)
-            (set! (@ read) url-missing))))
+    (set! (@ read) (reader a at base p (& to)))
     (when (== (@ read) url-moved)
       (let ([b (make-buffer)] [fragment (url-fragment at)])
         (buffer-add-string! (& b) (url-origin at))
-        (buffer-add-string! (& b) base)
         (buffer-add-string! (& b) (buffer-string (& to)))
         (when (> (-> fragment length) 0)
           (buffer-add-byte! (& b) #\#)
@@ -264,10 +256,9 @@
 ;; ---- starting ----
 
 ;; router-start! reads the URL as a route with r, before attach mounts the roots. A route is of the type named t and is
-;; n bytes long. m sets a route to the missing case.
-(define (router-start! [r route-reader] [m route-missing] [n u32] [t string])
+;; n bytes long.
+(define (router-start! [r route-reader] [n u32] [t string])
   (set! reader r)
-  (set! missing m)
   (set! size n)
   (set! type t)
   (set! started #t)

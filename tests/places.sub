@@ -2,7 +2,7 @@
 (require-unqualified std/http/form)
 (require-unqualified std/http/routable)
 
-(provide place home user draft long search lost place.url-read place.url-write! place.url-check place.url-missing!)
+(provide place home user draft long search lost place.url-read place.url-write! place.url-check)
 
 (struct search-query [q string])
 
