@@ -6,6 +6,8 @@
   #:style ".gap { height: 3000px }"
   (div ([class "gap"]) "top")
   (p ([id "end"]) "the end")
+  (div ([class "gap"]) "middle")
+  (p ([id "café"]) "the café")
   (div ([class "gap"]) "bottom"))
 
 (attach ["root" (tall)])

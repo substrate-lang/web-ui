@@ -43,4 +43,6 @@
     (expect (>= (-> (browser-box b (by-css "#end")) y) 3000.0)))
   (with-browser (b "fragment.sub" #:url "#end")
     (expect-text b (by-css "#end") "the end")
-    (expect (< (-> (browser-box b (by-css "#end")) y) 100.0))))
+    (expect (< (-> (browser-box b (by-css "#end")) y) 100.0)))
+  (with-browser (b "fragment.sub" #:url "#caf%C3%A9")
+    (expect (< (-> (browser-box b (by-css "#café")) y) 100.0))))

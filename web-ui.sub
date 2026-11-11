@@ -4,6 +4,7 @@
 (require-unqualified events host/events)
 (require-unqualified dom std/web/dom)
 (require-unqualified host/web/location)
+(require-unqualified std/http/url)
 
 (provide (all-from-out ui) (all-from-out events) (all-from-out dom) attach prevent-default! stop-propagation!)
 
@@ -26,13 +27,15 @@
 
 ;; Scrolls to the element that the URL's fragment names, as a browser does for a document it loads.
 (define (attach-scroll!)
-  (let ([url (location-get)] [i u32 0])
+  (let ([url (location-get)] [i u32 0] [a (make-arena)])
     (while (and (< i (-> url length)) (!= (@ url i) #\#)) (+= i 1))
     (when (< (+ i 1) (-> url length))
-      (let ([n (dom-element (slice url (+ i 1) (-> url length)))])
+      (let* ([raw (slice url (+ i 1) (-> url length))] [decoded (url-unescape (& a) raw #f)] [n (dom-element raw)])
+        (when (and (== n 0) (!= decoded raw)) (set! n (dom-element decoded)))
         (unless (== n 0)
           (dom-call! n "scrollIntoView")
           (dom-flush!))))
+    (arena-free (& a))
     (free (-> url bytes))))
 
 (begin-for-syntax
