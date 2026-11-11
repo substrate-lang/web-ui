@@ -1,0 +1,18 @@
+;; A component that a second copy of web-ui makes (support/twin.sub), put in the document by this copy's attach.
+(require twin twin/web-ui)
+(require-unqualified web-ui)
+
+(struct tally-state [count i32])
+
+(variant tally-message [bump])
+
+(define (tally-update [s (ptr tally-state)] [e (ptr tally-message)])
+  (match e [bump (+= (-> s count) 1)]))
+
+(twin:component (tally)
+  #:state [s tally-state]
+  #:messages tally-message
+  #:update tally-update
+  (button ([on click bump]) (int (-> s count))))
+
+(attach ["root" (tally)])

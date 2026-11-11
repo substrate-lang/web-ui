@@ -1,4 +1,5 @@
 (require-unqualified std/test/build)
+(require-unqualified "support/twin.sub")
 
 (test err-arguments (expect-compile-error "fail/err-arguments.sub" "err-arguments.sub:13:9: error: view: the view row takes 1 argument, but this passes 2"))
 (test err-component-event (expect-compile-error "fail/err-component-event.sub" "err-component-event.sub:21:17: error: view: chnged is not an event of the component counter, whose events are (changed)"))
@@ -25,3 +26,6 @@
 (test err-changed (expect-compile-error "fail/err-changed.sub" "err-changed.sub:10:13: error: component: #:changed needs parameters"))
 (test err-root-view (expect-compile-error "fail/err-root-view.sub" "err-root-view.sub:9:22: error: ui-root: a view put in an element has no component to take its messages"))
 (test err-view-option (expect-compile-error "fail/err-view-option.sub" "err-view-option.sub:4:13: error: view: the options are #:messages TYPE and #:style css"))
+(test err-copies
+  (twin-ready!)
+  (expect-compile-error "fail/err-copies.sub" "err-copies.sub:11:20: error: view: tally was made by another copy of web-ui, so only attach can put it in the document"))

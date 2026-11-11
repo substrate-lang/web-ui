@@ -1,6 +1,7 @@
 ;; Tests that use the examples as a user would, in Chromium.
 (require-unqualified std/test/browser)
 (require-unqualified std/test/test)
+(require-unqualified "support/twin.sub")
 
 (test counter
   (with-browser (b "../examples/counter.sub")
@@ -46,3 +47,10 @@
     (expect (< (-> (browser-box b (by-css "#end")) y) 100.0)))
   (with-browser (b "fragment.sub" #:url "#caf%C3%A9")
     (expect (< (-> (browser-box b (by-css "#café")) y) 100.0))))
+
+(test copies
+  (twin-ready!)
+  (with-browser (b "twin/copies.sub")
+    (expect-text b (by-css "button") "0")
+    (browser-click! b (by-css "button"))
+    (expect-text b (by-css "button") "1")))

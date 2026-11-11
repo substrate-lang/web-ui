@@ -6,4 +6,4 @@ compile to changes of the document. A component joins a view with its state,
 messages and update, and attach puts components and views in elements of the
 document. It is experimental.
 
-    substrate test -A        # the tests, three of them in Chromium
+    substrate test -A        # the tests, four of them in Chromium
