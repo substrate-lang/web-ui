@@ -6,6 +6,6 @@ compile to changes of the document, and can hold SVG as well as HTML. A
 component joins a view with its state, messages and update, and attach puts
 components and views in elements of the document. Given a routable type, attach
 also starts the router, which keeps the URL as a route in step with the
-browser's history. The router is experimental.
+browser's history.
 
     substrate test -A        # the tests, fourteen of them in Chromium
