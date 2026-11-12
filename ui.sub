@@ -108,24 +108,24 @@
 (define (ui-listener-heard [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
   (ui-deliver (-> (cast (ptr ui-listener) tag) instance) (ui-heard tag)))
 
-;; The reads of the current event and of the document, by name (std/web/dom.sub).
-(define event-texts (fn (string) -> string) 0)
-(define event-numbers (fn (string) -> f64) 0)
+;; The reads of the document, from a node by name (std/web/dom.sub).
+(define read-texts (fn (u32 string) -> string) 0)
+(define read-numbers (fn (u32 string) -> f64) 0)
 (define node-is (fn (u32 u32 string) -> bool) 0)
 
-(define (ui-read-with! [texts (fn (string) -> string)] [numbers (fn (string) -> f64)]
+(define (ui-read-with! [texts (fn (u32 string) -> string)] [numbers (fn (u32 string) -> f64)]
                        [is (fn (u32 u32 string) -> bool)])
-  (set! event-texts texts)
-  (set! event-numbers numbers)
+  (set! read-texts texts)
+  (set! read-numbers numbers)
   (set! node-is is))
 
 (define (ui-event-text [path string]) -> string
-  (let ([f event-texts])
-    (if (== f 0) "" (f path))))
+  (let ([f read-texts])
+    (if (== f 0) "" (f dom-event path))))
 
 (define (ui-event-number [path string]) -> f64
-  (let ([f event-numbers])
-    (if (== f 0) 0.0 (f path))))
+  (let ([f read-numbers])
+    (if (== f 0) 0.0 (f dom-event path))))
 
 (define (ui-event-truth [path string]) -> bool (!= (ui-event-number path) 0.0))
 

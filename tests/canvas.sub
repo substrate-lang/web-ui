@@ -51,9 +51,9 @@
 (define the-model model)
 (define a-board board.state)
 
-(define (event-text [path string]) -> string (if (== path "key") "ArrowUp" ""))
+(define (read-text [node u32] [path string]) -> string (if (== path "key") "ArrowUp" ""))
 (define (node-is [node u32] [from u32] [path string]) -> bool #f)
-(define (event-number [path string]) -> f64
+(define (read-number [node u32] [path string]) -> f64
   (cond
     [(== path "timeStamp") 1234.5]
     [(== path "offsetX") 12.0]
@@ -77,7 +77,7 @@
   (set! (-> the-model x) 100)
   (set! (-> the-model y) 50)
   (set! (-> the-model label) "hello")
-  (ui-read-with! event-text event-number node-is)
+  (ui-read-with! read-text read-number node-is)
   (printf "load an image\n")
   (set! sheet (canvas-load-image! "assets/sprites.png" 0))
   (trace-patches!)
