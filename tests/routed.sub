@@ -1,14 +1,14 @@
-;; An app with routes (places.sub): links between its pages, one with a parameter, a long page with a fragment, a draft
-;; that holds the document while it is unsaved, a navigation from an update, a title for each page, and links the router
-;; leaves alone, and a form that searches in place. Its links work at any base: they come from route-href or are
-;; relative.
+;; An app with routes (places.sub): links between its pages, one with a parameter, a long page with a fragment and
+;; links between its start and end, a draft that holds the document while it is unsaved, a navigation from an update, a
+;; title for each page, links the router leaves alone, and a form that searches in place. It counts hashchange events.
+;; Its links work at any base: they come from route-href or are relative.
 (require-unqualified web-ui)
 (require-unqualified std/http/routable)
 (require-unqualified "places.sub")
 
-(struct app-state [at place] [unsaved bool] [stopped string] [marked bool])
+(struct app-state [at place] [unsaved bool] [stopped string] [marked bool] [hashes u32])
 
-(variant app-message [went [to place]] [edited] [saved] [stopped [url string]] [marked] [three])
+(variant app-message [went [to place]] [edited] [saved] [stopped [url string]] [marked] [three] [hashed])
 
 (define (app-update [s (ptr app-state)] [m (ptr app-message)])
   (match m
@@ -17,7 +17,8 @@
     [saved (set! (-> s unsaved) #f)]
     [(stopped url) (set! (-> s stopped) (string-copy url))]
     [marked (set! (-> s marked) #t)]
-    [three (navigate! (route-href (user 3)))]))
+    [three (navigate! (route-href (user 3)))]
+    [hashed (+= (-> s hashes) 1)]))
 
 (define (unsaved? [s (ptr app-state)]) -> bool (-> s unsaved))
 
@@ -27,7 +28,7 @@
   #:update app-update
   #:route went
   #:leaving [unsaved? stopped]
-  (div
+  (div ([on-window hashchange hashed])
     (nav ([style "position: fixed; top: 0; background: white"])
       (a ([href (route-href home)] [id "home"]) "Home")
       (a ([href (route-href (user 7))] [id "user"] ["aria-current" (if (route-current? (user 7)) "page" "false")])
@@ -45,6 +46,7 @@
     (button ([on click marked]) "Mark")
     (button ([on click three]) "Three")
     (p ([id "mark"]) (text (if (-> s marked) "marked" "")))
+    (p ([id "hashes"]) (int (cast i64 (-> s hashes))))
     (main
       (match (-> s at)
         [home (title "Home") (p ([id "page"]) "home")]
@@ -57,8 +59,8 @@
          (p ([id "stopped"]) (text (-> s stopped)))]
         [long
          (title "Long")
-         (div ([style "height: 3000px"]) "long")
-         (p ([id "end"]) "the end")
+         (div ([id "start"] [style "height: 3000px"]) "long " (a ([href "long/#end"] [id "to-end"]) "To the end"))
+         (p ([id "end"]) "the end " (a ([href "long/#start"] [id "to-start"]) "To the start"))
          (div ([style "height: 3000px"]))]
         [(search query) (title "Search") (p ([id "page"]) "search " (text (-> query q)))]
         [lost (title "Lost") (p ([id "page"]) "lost")]))))
