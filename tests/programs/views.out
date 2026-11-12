@@ -1,97 +1,97 @@
 mount a counter
 template 1 <div class="counter"><h1><!--t--></h1><button data-n>-</button><span data-n>count: <!--t-->!</span><button data-n>+</button><br><input type="text" data-n></div>
-clone 1 as #2 with 6 in #0 before #0
-text #3 "Counter"
-listen #4 click
-attr #4 disabled=""
-attr #5 class="pos"
-text #6 "0"
-listen #7 click
-attr #8 value="Counter"
+clone 1 as #3 with 6 in #0 before #0
+text #4 "Counter"
+listen #5 click
+attr #5 disabled=""
+attr #6 class="pos"
+text #7 "0"
+listen #8 click
+attr #9 value="Counter"
 --
 count 5
-unattr #4 disabled
-text #6 "5"
-call #8 focus
+unattr #5 disabled
+text #7 "5"
+call #9 focus
 --
 count -1, another title
-text #3 "Counting"
-attr #5 class="neg"
-text #6 "-1"
-attr #8 value="Counting"
-call #8 focus
+text #4 "Counting"
+attr #6 class="neg"
+text #7 "-1"
+attr #9 value="Counting"
+call #9 focus
 --
 nothing changed
 --
 unmount it
-remove #2 with 6
+remove #3 with 6
 --
 mount a todo, empty
 template 2 <!--a--><ul title="a &quot;list&quot; &amp; &lt;more&gt;"><!--a--></ul><!--a-->
-clone 2 as #9 with 3 in #0 before #0
-clone 1 as #13 with 6 in #0 before #12
-text #14 "Counting"
-listen #15 click
-attr #16 class="neg"
-text #17 "-1"
-listen #18 click
-attr #19 value="Counting"
+clone 2 as #10 with 3 in #0 before #0
+clone 1 as #14 with 6 in #0 before #13
+text #15 "Counting"
+listen #16 click
+attr #17 class="neg"
+text #18 "-1"
+listen #19 click
+attr #20 value="Counting"
 --
 two items
 template 3 <p>a &lt; b &amp; "c"<!--t--></p>
-clone 3 as #20 with 1 in #0 before #10
-text #21 "2"
+clone 3 as #21 with 1 in #0 before #11
+text #22 "2"
 template 4 <li data-n><!--t--><!--a--></li>
-clone 4 as #22 with 3 in #0 before #11
-attr #23 class=""
-listen #23 click
-text #24 "twenty"
+clone 4 as #23 with 3 in #0 before #12
+attr #24 class=""
+listen #24 click
+text #25 "twenty"
 template 5 <i>to do</i>
-clone 5 as #26 with 0 in #0 before #25
-clone 4 as #27 with 3 in #0 before #22
-attr #28 class=""
-listen #28 click
-text #29 "ten"
-clone 5 as #31 with 0 in #0 before #30
+clone 5 as #27 with 0 in #0 before #26
+clone 4 as #28 with 3 in #0 before #23
+attr #29 class=""
+listen #29 click
+text #30 "ten"
+clone 5 as #32 with 0 in #0 before #31
 --
 a third, done
-text #21 "3"
-clone 4 as #32 with 3 in #0 before #11
-attr #33 class="done"
-listen #33 click
-text #34 "thirty"
+text #22 "3"
+clone 4 as #33 with 3 in #0 before #12
+attr #34 class="done"
+listen #34 click
+text #35 "thirty"
 template 6 <b>done</b>
-clone 6 as #36 with 0 in #0 before #35
+clone 6 as #37 with 0 in #0 before #36
 --
 the first done
-attr #28 class="done"
-remove #31 with 0
-clone 6 as #37 with 0 in #0 before #30
+attr #29 class="done"
+remove #32 with 0
+clone 6 as #38 with 0 in #0 before #31
 --
 the first gone
-text #21 "2"
-free #37 with 0
-remove #27 with 3
+text #22 "2"
+free #38 with 0
+remove #28 with 3
 --
 the order changed, and one new between
-text #21 "3"
-clone 4 as #38 with 3 in #0 before #22
-attr #39 class=""
-listen #39 click
-text #40 "forty"
-clone 5 as #42 with 0 in #0 before #41
-move #32 in #0 before #38
+text #22 "3"
+clone 4 as #39 with 3 in #0 before #23
+attr #40 class=""
+listen #40 click
+text #41 "forty"
+clone 5 as #43 with 0 in #0 before #42
+move #33 in #0 before #39
 --
 none
-remove #20 with 1
-free #36 with 0
-remove #32 with 3
-free #42 with 0
-remove #38 with 3
-free #26 with 0
-remove #22 with 3
+remove #21 with 1
+free #37 with 0
+remove #33 with 3
+free #43 with 0
+remove #39 with 3
+free #27 with 0
+remove #23 with 3
 --
 unmount it
-free #13 with 6
-remove #9 with 3
+free #14 with 6
+remove #10 with 3
 --

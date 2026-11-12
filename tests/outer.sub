@@ -1,0 +1,8 @@
+;; A site that mounts the test app (routed.sub) at /inner/, with a link to it.
+(require-unqualified web-ui)
+
+(view (front)
+  (a ([href "inner/"] [id "inner"]) "Inner")
+  (p ([id "page"]) "outer"))
+
+(attach ["root" (front)])

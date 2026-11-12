@@ -1,0 +1,6 @@
+;; A match without clauses.
+(require-unqualified web-ui/ui)
+
+(view (page [n u32])
+  (match n))
+(define (main) 0)

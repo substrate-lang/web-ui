@@ -24,10 +24,10 @@
 (define the-value string "")
 (define the-key string "")
 (define the-truths u32 0)
-(define (event-text [path string]) -> string
+(define (read-text [node u32] [path string]) -> string
   (cond [(== path "target.value") the-value] [(== path "key") the-key] [(== path "type") "wheel"] [else ""]))
 (define (truth [bit u32]) -> f64 (if (!= (bit-and the-truths bit) 0) 1.0 0.0))
-(define (event-number [path string]) -> f64
+(define (read-number [node u32] [path string]) -> f64
   (cond [(== path "shiftKey") (truth 1)] [(== path "metaKey") (truth 8)] [(== path "target.checked") (truth 16)]
         [(== path "deltaY") -120.0] [else 0.0]))
 (define (node-is [node u32] [from u32] [path string]) -> bool #f)
@@ -54,7 +54,7 @@
   (printf "events with no source\n")
   (hear 0)
   (hear 1)
-  (ui-read-with! event-text event-number node-is)
+  (ui-read-with! read-text read-number node-is)
   (printf "events\n")
   (set! the-value "hello")
   (set! the-key "Enter")

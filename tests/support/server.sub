@@ -1,0 +1,31 @@
+;; The test app's server. It answers with the site's files, and with the app for a path that names no file, as the
+;; app's routes read that path. The app is at / and at /inner/, where the outer site mounts it.
+(require-unqualified host/events)
+(require-unqualified std/http)
+(require-unqualified std/http/server)
+(require-unqualified std/http/static)
+(require-unqualified "../places.sub")
+
+(provide main)
+
+(define server http-server)
+(define files http-files)
+(define apps (array http-app 2))
+
+(define (handle [r (ptr http-request)]) (http-static! r (& files)))
+
+(define (listening [s (ptr http-server)])
+  (let ([line (make-buffer)])
+    (buffer-add-string! (& line) "http://127.0.0.1:")
+    (http-add-decimal! (& line) (cast i64 (-> s port)))
+    (buffer-add-string! (& line) "/\n")
+    (host-write 1 (buffer-bytes (& line)))))
+
+(define (main)
+  (set! (-> files root) (@ (host-args) 0))
+  (set! (@ apps 0) (http-app #:path "/" #:page "index.html" #:routes place.url-check))
+  (set! (@ apps 1) (http-app #:path "/inner/" #:page "inner/index.html" #:routes place.url-check))
+  (set! (-> files apps) (slice apps))
+  (set! (-> server listening) listening)
+  (let ([why error])
+    (unless (http-serve! (& server) 0 handle (& why)) (host-exit 1 (error-text (& why))))))

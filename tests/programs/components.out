@@ -1,48 +1,48 @@
 mount
 template 1 <!--a--><!--a--><p>total <!--t--></p><button data-n>bigger</button><button data-n>toggle</button>
-clone 1 as #2 with 5 in #0 before #0
+clone 1 as #3 with 5 in #0 before #0
 stylesheet .counter { margin: 0 }
 template 2 <p class="counter"><button data-n>+</button><!--t--><button data-n>reset</button></p>
-clone 2 as #8 with 3 in #0 before #3
-listen #9 click
-text #10 "0"
-listen #11 click
+clone 2 as #9 with 3 in #0 before #4
+listen #10 click
+text #11 "0"
+listen #12 click
 template 3 <!--a--><!--a-->
-clone 3 as #12 with 2 in #0 before #4
-clone 2 as #15 with 3 in #0 before #13
-listen #16 click
-text #17 "0"
-listen #18 click
+clone 3 as #13 with 2 in #0 before #5
+clone 2 as #16 with 3 in #0 before #14
+listen #17 click
+text #18 "0"
+listen #19 click
 template 4 <p class="loader"><!--t--></p>
-clone 4 as #19 with 1 in #0 before #14
-text #20 "waiting"
-text #5 "0"
-listen #6 click
+clone 4 as #20 with 1 in #0 before #15
+text #21 "waiting"
+text #6 "0"
 listen #7 click
+listen #8 click
 --
 the left counter goes up by 1
-text #10 "1"
-text #5 "1"
+text #11 "1"
+text #6 "1"
 --
 the step becomes 11
 --
 the left counter goes up by 11
-text #10 "12"
-text #5 "12"
+text #11 "12"
+text #6 "12"
 --
 the right counter goes up by 2
-text #17 "2"
-text #5 "14"
+text #18 "2"
+text #6 "14"
 --
 the loader's request is answered
-text #20 "answered 42"
+text #21 "answered 42"
 --
 the loader's subscription brings an event
-text #20 "fed 7"
+text #21 "fed 7"
 --
 the right counter and the loader are removed
-free #15 with 3
-free #19 with 1
-remove #12 with 2
+free #16 with 3
+free #20 with 1
+remove #13 with 2
 --
 the loader's subscription brings an event after the loader is gone

@@ -4,6 +4,7 @@ A UI library for web programs, built on
 [Substrate](https://github.com/substrate-lang/substrate) and its std/web. Views
 compile to changes of the document. A component joins a view with its state,
 messages and update, and attach puts components and views in elements of the
-document. It is experimental.
+document. Given a routable type, attach also starts the router, which keeps the
+URL as a route in step with the browser's history. The router is experimental.
 
-    substrate test -A        # the tests, four of them in Chromium
+    substrate test -A        # the tests, eleven of them in Chromium

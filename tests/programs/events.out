@@ -1,15 +1,15 @@
 mount
 template 1 <input type="text" required maxlength="40" size="8" data-n><input type="checkbox" data-n><table><tr><td data-n x-own="kept">cell</td></tr></table><my-element anything="at all" data-n>own</my-element><div data-n></div>
-clone 1 as #2 with 5 in #0 before #0
-attr #3 tabindex="2"
-listen #3 input
-listen #3 keydown
-attr #4 checked=""
-listen #4 change
-attr #5 colspan="3"
-attr #5 data-note="first"
-listen #6 my-event
-listen #7 wheel
+clone 1 as #3 with 5 in #0 before #0
+attr #4 tabindex="2"
+listen #4 input
+listen #4 keydown
+attr #5 checked=""
+listen #5 change
+attr #6 colspan="3"
+attr #6 data-note="first"
+listen #7 my-event
+listen #8 wheel
 --
 events with no source
 typed 
@@ -23,15 +23,15 @@ checked
 plain
 turned wheel by -120
 busy, wider, another id
-attr #3 disabled=""
-attr #3 tabindex="3"
-unattr #4 checked
-attr #5 colspan="4"
+attr #4 disabled=""
+attr #4 tabindex="3"
+unattr #5 checked
+attr #6 colspan="4"
 --
 key 8 a
 nothing changed
 --
 not busy
-unattr #3 disabled
-attr #4 checked=""
+unattr #4 disabled
+attr #5 checked=""
 --

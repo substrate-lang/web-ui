@@ -18,12 +18,12 @@
 (define the-model model)
 (define a-screen screen.state)
 
-(define (event-text [path string]) -> string "")
-(define (event-number [path string]) -> f64
+(define (read-text [node u32] [path string]) -> string "")
+(define (read-number [node u32] [path string]) -> f64
   (cond [(== path "offsetX") 40.0] [(== path "movementX") 12.0]
         [(== path "movementY") -5.0] [(== path "button") 2.0] [else 0.0]))
 (define (node-is [node u32] [from u32] [path string]) -> bool
-  (and (== node 3) (== from dom-document) (== path "pointerLockElement")))
+  (and (== node 4) (== from dom-document) (== path "pointerLockElement")))
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
@@ -32,7 +32,7 @@
     [(lock-changed locked) (printf "  the lock changed: locked ~a\n" (if locked 1 0))]))
 
 (define (main)
-  (ui-read-with! event-text event-number node-is)
+  (ui-read-with! read-text read-number node-is)
   (printf "mount\n")
   (screen.mount (& a-screen) 0 0 (& the-model))
   (trace-patches!)

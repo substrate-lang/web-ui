@@ -1,0 +1,7 @@
+;; A title without its text.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (title)
+  (p "page"))
+(define (main) 0)

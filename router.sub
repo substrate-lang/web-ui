@@ -1,0 +1,372 @@
+;; The router keeps the document's URL as a route, a value of a routable type (std/http/routable.sub). It keeps the
+;; route in step with the browser's history and gives it to the components that take routes (#:route). attach starts
+;; it. The routes read the path from the directory of the document's base URL on, so a page with <base href="/notes/">
+;; reads /notes/7/ as /7/. A URL outside that directory matches no route. route-href writes the whole path.
+;; A click on a link navigates in place when one of the routes matches the link's URL. The router leaves the click to
+;; the browser when a key or a mouse button other than the first is held, or when the link has a target, a download
+;; attribute or rel external. A form that submits with GET to the document navigates in place the same way, to its
+;; action's URL with the form's query. navigate!, Back and Forward navigate in place too. The browser loads other URLs.
+;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
+;; moves to the start of the document and its title is announced. The page scrolls to the URL's fragment or to its top,
+;; or back to where it was for Back, Forward and a reload. Each entry's state starts with the router's state: a mark,
+;; the entry's place in the history, and where the page was scrolled.
+(require-unqualified "ui.sub")
+(require-unqualified host/events)
+(require-unqualified host/web/history)
+(require-unqualified host/web/location)
+(require-unqualified std/web/dom)
+(require-unqualified std/http/url)
+(require-unqualified std/http/routable)
+
+(provide router-start! router-mounted! navigate! navigate-replace! navigate-with! navigate-back! navigate-forward!
+         route-url route-state navigating? navigation-wait! navigation-done! route-href route-current? router-text
+         router-current? router-base)
+
+(typedef route-reader (fn ((ptr arena) string string (ptr void) (ptr buffer)) -> u32))
+
+(const mark u32 1919055219)
+(const header u32 24)
+
+(define started bool #f)
+(define reader route-reader 0)
+(define size u32 0)
+(define type string "")
+(define base string "")
+
+(define held arena)
+(define route (ptr void) 0)
+(define url string "")
+(define index u32 0)
+(define reverting bool #f)
+(define waits u32 0)
+(define due bool #f)
+(define moved bool #f)
+(define scrolling u32 0)
+(define restore-x f64 0.0)
+(define restore-y f64 0.0)
+(define announcer u32 0)
+(define popped event-head)
+(define leaving event-head)
+(define none (slice u8) 0)
+
+;; ---- entries ----
+
+(define (ours? [s (slice u8)]) -> bool (and (>= (-> s length) header) (== (@ (cast (ptr u32) (-> s items))) mark)))
+(define (index-in [s (slice u8)]) -> u32 (@ (cast (ptr u32) (+ (-> s items) 4))))
+(define (x-in [s (slice u8)]) -> f64 (@ (cast (ptr f64) (+ (-> s items) 8))))
+(define (y-in [s (slice u8)]) -> f64 (@ (cast (ptr f64) (+ (-> s items) 16))))
+(define (app-in [s (slice u8)]) -> (slice u8) (if (ours? s) (slice s header) s))
+
+(define (state! [b (ptr buffer)] [i u32] [x f64] [y f64] [app (slice u8)])
+  (let ([m mark] [n i] [sx x] [sy y])
+    (buffer-add! b (slice (cast (ptr u8) (& m)) 4))
+    (buffer-add! b (slice (cast (ptr u8) (& n)) 4))
+    (buffer-add! b (slice (cast (ptr u8) (& sx)) 8))
+    (buffer-add! b (slice (cast (ptr u8) (& sy)) 8))
+    (buffer-add! b app)))
+
+(define (kept!)
+  (let ([s (history-state)] [b (make-buffer)])
+    (state! (& b) index (dom-read-number dom-document "scrollingElement.scrollLeft")
+            (dom-read-number dom-document "scrollingElement.scrollTop") (app-in s))
+    (history-replace-state (buffer-bytes (& b)) "" 0)
+    (buffer-free! (& b))
+    (free (-> s items))))
+
+(define (entered! [at string] [replace bool] [app (slice u8)])
+  (let ([b (make-buffer)])
+    (state! (& b) index 0.0 0.0 app)
+    (if replace (history-replace-state (buffer-bytes (& b)) at 0) (history-push-state (buffer-bytes (& b)) at 0))
+    (buffer-free! (& b))))
+
+;; ---- routes ----
+
+;; Reads at into the arena as a route and sets r to it. It returns the route's URL, which is at, or the canonical URL
+;; when the path moved, and it sets read to what reading returned.
+(define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))] [read (ptr u32)]) -> string
+  (let ([to (make-buffer)] [p (arena-alloc a size)] [found (copy a at)])
+    (set! (@ read) (reader a at base p (& to)))
+    (when (== (@ read) url-moved)
+      (let ([b (make-buffer)] [fragment (url-fragment at)])
+        (buffer-add-string! (& b) (url-origin at))
+        (buffer-add-string! (& b) (buffer-string (& to)))
+        (when (> (-> fragment length) 0)
+          (buffer-add-byte! (& b) #\#)
+          (buffer-add-string! (& b) fragment))
+        (set! found (copy a (buffer-string (& b))))
+        (buffer-free! (& b))))
+    (buffer-free! (& to))
+    (set! (@ r) p)
+    found))
+
+(define (commit! [a arena] [r (ptr void)] [at string])
+  (let ([old held])
+    (set! held a)
+    (set! route r)
+    (set! url at)
+    (set! moved #t)
+    (set! due #t)
+    (ui-route! route type)
+    (arena-free (& old))))
+
+;; Navigates in place to href, resolved against the URL, and returns whether it did. It leaves a URL of another origin,
+;; or one that no route matches, to the browser.
+(define (went! [href string] [replace bool] [keep bool] [app (slice u8)]) -> bool
+  (unless started (return #f))
+  (let* ([next (make-arena)] [to (url-resolve (& next) url href)] [target (url-target to)])
+    (when (!= (url-origin to) (url-origin url))
+      (arena-free (& next))
+      (return #f))
+    (when (== target (url-target url))
+      (unless (== to url)
+        (kept!)
+        (unless replace (+= index 1))
+        (entered! to replace app)
+        (set! url (copy (& held) to)))
+      (arena-free (& next))
+      (set! scrolling (if keep 0 1))
+      (settle!)
+      (return #t))
+    (let* ([r (ptr void) 0] [read u32 0] [at (route-of (& next) to (& r) (& read))])
+      (when (or (== read url-missing) (== read url-bad))
+        (arena-free (& next))
+        (return #f))
+      (when (ui-held at)
+        (arena-free (& next))
+        (return #t))
+      (kept!)
+      (unless replace (+= index 1))
+      (entered! at replace app)
+      (set! scrolling (if keep 0 1))
+      (commit! next r at)
+      #t)))
+
+;; ---- settling ----
+
+(define (scroll-to! [x f64] [y f64])
+  (dom-write-number! dom-document "scrollingElement.scrollLeft" x)
+  (dom-write-number! dom-document "scrollingElement.scrollTop" y))
+
+(define (scroll-fragment!)
+  (let* ([raw (url-fragment url)] [a (make-arena)] [n (if (== (-> raw length) 0) 0 (dom-element raw))])
+    (when (and (== n 0) (> (-> raw length) 0))
+      (let ([decoded (url-unescape (& a) raw #f)]) (unless (== decoded raw) (set! n (dom-element decoded)))))
+    (if (== n 0) (scroll-to! 0.0 0.0) (dom-call! n "scrollIntoView"))
+    (arena-free (& a))))
+
+(define (settle!)
+  (set! due #f)
+  (when moved
+    (dom-call-with! dom-document "body.setAttribute" (slice (array-of dom-value (dom-text "tabindex") (dom-text "-1"))))
+    (dom-call! dom-document "body.focus")
+    (dom-call-with! dom-document "body.removeAttribute" (slice (array-of dom-value (dom-text "tabindex"))))
+    (dom-set-text! announcer (dom-read-text dom-document "title")))
+  (case scrolling
+    [(1) (scroll-fragment!)]
+    [(2) (scroll-to! restore-x restore-y)]
+    [else (begin)])
+  (set! moved #f)
+  (set! scrolling 0)
+  (dom-flush!))
+
+(define (drawn!) (when (and due (== waits 0)) (settle!)))
+
+;; ---- events ----
+
+(define (key-held?) -> bool
+  (or (!= (dom-read-number dom-event "ctrlKey") 0.0) (!= (dom-read-number dom-event "metaKey") 0.0)
+      (!= (dom-read-number dom-event "shiftKey") 0.0) (!= (dom-read-number dom-event "altKey") 0.0)))
+
+(define (has-word? [s string] [word string]) -> bool
+  (let ([start u32 0])
+    (for ([i u32 0]) (<= i (-> s length)) (+= i 1)
+      (when (or (== i (-> s length)) (== (@ s i) 32) (== (@ s i) 9) (== (@ s i) 10) (== (@ s i) 12) (== (@ s i) 13))
+        (when (== (slice s start i) word) (return #t))
+        (set! start (+ i 1))))
+    #f))
+
+(define (has-attribute? [node u32] [method string] [name string]) -> bool
+  (!= (dom-call-number node method (dom-values (dom-text name))) 0.0))
+
+(define (prevent!) (dom-call-now! dom-event "preventDefault" (dom-values)))
+
+(define (clicked)
+  (let ([target (dom-read-text dom-event "currentTarget.target")])
+    (unless (or (has-attribute? dom-event "currentTarget.hasAttribute" "download")
+                (!= (dom-read-number dom-event "button") 0.0) (key-held?)
+                (!= (dom-read-number dom-event "defaultPrevented") 0.0)
+                (and (> (-> target length) 0) (!= target "_self"))
+                (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
+      (when (went! (dom-read-text dom-event "currentTarget.href") #f #f none) (prevent!)))))
+
+(define (chosen [submitter u32] [attribute string] [own string] [form string]) -> string
+  (if (and (!= (dom-read-number submitter "nodeType") 0.0) (has-attribute? submitter "hasAttribute" attribute))
+      (dom-read-text submitter own)
+      (dom-read-text dom-event form)))
+
+(define (submitted)
+  (let* ([submitter (dom-read-node dom-event "submitter")]
+         [method (chosen submitter "formmethod" "formMethod" "currentTarget.method")]
+         [target (chosen submitter "formtarget" "formTarget" "currentTarget.target")]
+         [action (chosen submitter "formaction" "formAction" "currentTarget.action")])
+    (unless (or (!= (dom-read-number dom-event "defaultPrevented") 0.0) (== method "post") (== method "dialog")
+                (and (> (-> target length) 0) (!= target "_self"))
+                (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
+      (let ([fragment (url-fragment action)] [b (make-buffer)])
+        (buffer-add-string! (& b) (url-origin action))
+        (buffer-add-string! (& b) (url-path (url-target action)))
+        (buffer-add-byte! (& b) #\?)
+        (buffer-add-string! (& b) (dom-form-data-with dom-event "currentTarget" submitter))
+        (when (> (-> fragment length) 0)
+          (buffer-add-byte! (& b) #\#)
+          (buffer-add-string! (& b) fragment))
+        (when (went! (buffer-string (& b)) #f #f none) (prevent!))
+        (buffer-free! (& b))))
+    (dom-forget-node! submitter)))
+
+(define (followed) (if (== (dom-read-text dom-event "type") "submit") (submitted) (clicked)))
+
+(define (heard-pop [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (let ([given (events-take-text)]) (free (-> given bytes)))
+  (if reverting
+      (set! reverting #f)
+      (let* ([s (history-state)] [ours (ours? s)] [to (if ours (index-in s) index)] [href (location-href)]
+             [same (== (url-target href) (url-target url))])
+        (if (and (not same) (ui-held href))
+            (unless (== to index)
+              (set! reverting #t)
+              (history-go (- (cast i32 index) (cast i32 to))))
+            (begin
+              (set! index to)
+              (set! restore-x (if ours (x-in s) 0.0))
+              (set! restore-y (if ours (y-in s) 0.0))
+              (set! scrolling (if ours 2 1))
+              (unless ours (entered! "" #t (app-in s)))
+              (if same
+                  (begin
+                    (set! url (copy (& held) href))
+                    (settle!))
+                  (let* ([next (make-arena)] [r (ptr void) 0] [read u32 0] [at (route-of (& next) href (& r) (& read))])
+                    (unless (== at href) (history-replace-state s at 0))
+                    (commit! next r at)))))
+        (free (-> s items))
+        (free (-> href bytes)))))
+
+(define (heard-leave [source u32] [kind u32] [id u32] [tag (ptr void)] [value i32])
+  (when (ui-holding?) (prevent!)))
+
+;; ---- starting ----
+
+;; router-start! reads the URL as a route with r, before attach mounts the roots. A route is of the type named t and is
+;; n bytes long.
+(define (router-start! [r route-reader] [n u32] [t string])
+  (set! reader r)
+  (set! size n)
+  (set! type t)
+  (set! started #t)
+  (let* ([a (make-arena)] [dir (url-path (url-target (url-resolve (& a) (dom-read-text dom-document "baseURI") ".")))])
+    (set! base (string-copy (slice dir 0 (if (> (-> dir length) 0) (- (-> dir length) 1) 0))))
+    (arena-free (& a)))
+  (history-set-scroll-restoration "manual")
+  (let* ([href (location-href)] [s (history-state)] [p (ptr void) 0] [read u32 0]
+         [at (route-of (& held) href (& p) (& read))] [out (make-buffer)])
+    (set! route p)
+    (set! url at)
+    (if (ours? s)
+        (begin
+          (set! index (index-in s))
+          (set! restore-x (x-in s))
+          (set! restore-y (y-in s))
+          (set! scrolling 2))
+        (set! scrolling 1))
+    (state! (& out) index restore-x restore-y (app-in s))
+    (history-replace-state (buffer-bytes (& out)) (if (== at href) "" at) 0)
+    (buffer-free! (& out))
+    (free (-> s items))
+    (free (-> href bytes)))
+  (ui-route! route type)
+  (set! (-> popped handle) heard-pop)
+  (history-listen (& popped))
+  (set! (-> leaving handle) heard-leave)
+  (dom-listen-window! 0 "beforeunload" (cast (ptr void) (& leaving)))
+  (ui-navigator! followed)
+  (ui-drawn! drawn!)
+  (set! announcer (+ (dom-add! (dom-template "<div aria-live=\"polite\" aria-atomic=\"true\" style=\"position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap\"><!--t--></div>") 0 0) 1)))
+
+(define (router-mounted!) (settle!))
+
+;; ---- navigating from code ----
+
+(define (navigate-with! [href string] [replace bool] [keep bool] [app (slice u8)])
+  (unless (went! href replace keep app) (if replace (location-replace href 0) (location-assign href 0))))
+
+(define (navigate! [href string]) (navigate-with! href #f #f none))
+
+(define (navigate-replace! [href string]) (navigate-with! href #t #f none))
+
+(define (navigate-back!) (history-back))
+
+(define (navigate-forward!) (history-forward))
+
+(define (route-url) -> string url)
+
+;; route-state gives the app's part of the current entry's state, which lasts until the next navigation.
+(define (route-state) -> (slice u8)
+  (let* ([s (history-state)] [app (app-in s)] [p (cast (ptr u8) (arena-alloc (& held) (-> app length)))])
+    (memcpy p (-> app items) (-> app length))
+    (free (-> s items))
+    (slice p (-> app length))))
+
+(define (navigating?) -> bool (> waits 0))
+
+(define (navigation-wait!) (+= waits 1))
+
+(define (navigation-done!)
+  (when (> waits 0)
+    (-= waits 1)
+    (when (and (== waits 0) due) (settle!))))
+
+(define (router-text [b (ptr buffer)]) -> string
+  (let* ([bytes (buffer-bytes b)] [p (cast (ptr u8) (dom-frame-alloc (-> bytes length)))])
+    (memcpy p (-> bytes items) (-> bytes length))
+    (buffer-free! b)
+    (cast string (slice p (-> bytes length)))))
+
+(define (router-current? [target string]) -> bool (== target (url-target (route-url))))
+
+;; The directory of the document's base URL, without its final slash.
+(define (router-base) -> string base)
+
+;; (route-href (case value ...)) writes a route's target, and (route-current? (case value ...)) tells whether the
+;; document is at it. case alone stands for a case without values.
+(begin-for-syntax
+  (require-unqualified compiler/macros)
+
+  (define (constructed-type [who datum] [e datum]) -> datum
+    (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
+           [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
+      (syntax-match v
+        [('#%form _ ('#%substrate-construct t _ _)) t]
+        [_ (raise-syntax-error who "expected a case of a routable type: (case value ...), or case alone" e)])))
+
+  (define (route-href-form [s datum]) -> datum
+    (syntax-match s
+      [(_ e)
+       (let* ([t (constructed-type 'route-href e)]
+              [write (datum->syntax t (string->symbol (format-message "~a.url-write!" `(,(syntax-e t)))) t)])
+         (unless (== (identifier-binding-kind write) 'function)
+           (raise-syntax-error 'route-href (format-message "~a is not a routable type" `(,(syntax-e t))) e))
+         #`(let ([value #,t #,e] [b (make-buffer)])
+             (buffer-add-string! (& b) (router-base))
+             (#,write (& b) (& value))
+             (router-text (& b))))]
+      [_ (raise-syntax-error 'route-href "expected (route-href (case value ...)), or (route-href case)" s)]))
+
+  (define (route-current-form [s datum]) -> datum
+    (syntax-match s
+      [(_ e) #`(router-current? (route-href #,e))]
+      [_ (raise-syntax-error 'route-current? "expected (route-current? (case value ...)), or (route-current? case)"
+                             s)])))
+
+(define-syntax route-href route-href-form)
+(define-syntax route-current? route-current-form)

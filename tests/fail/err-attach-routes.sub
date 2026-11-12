@@ -1,0 +1,8 @@
+;; Attaching with #:routes a struct, not a routable type.
+(require-unqualified web-ui)
+
+(struct place [n u32])
+
+(view (page) (p "page"))
+
+(attach #:routes place ["root" (page)])
