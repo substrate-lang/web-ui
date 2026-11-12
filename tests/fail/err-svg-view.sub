@@ -1,0 +1,8 @@
+;; A view that starts with SVG elements, used outside svg, reported at the call.
+(require-unqualified web-ui/ui)
+
+(view (spot) (circle ([r 5])))
+
+(view (page)
+  (div (spot)))
+(define (main) 0)

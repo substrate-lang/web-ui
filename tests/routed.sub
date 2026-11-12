@@ -1,6 +1,7 @@
 ;; An app with routes (places.sub): links between its pages, one with a parameter, a long page with a fragment and
 ;; links between its start and end, a draft that holds the document while it is unsaved, a navigation from an update, a
-;; title for each page, links the router leaves alone, and a form that searches in place. It counts hashchange events.
+;; title for each page, links the router leaves alone, two SVG links, and a form that searches in place. It counts
+;; hashchange events.
 ;; Its links work at any base: they come from route-href or are relative.
 (require-unqualified web-ui)
 (require-unqualified std/http/routable)
@@ -45,6 +46,9 @@
       (button ([formmethod "post"] [formaction "index.html"] [id "post"]) "Post"))
     (button ([on click marked]) "Mark")
     (button ([on click three]) "Three")
+    (svg ([width 50] [height 20])
+      (a ([href (route-href (user 4))] [id "svg-user"]) (rect ([width 20] [height 20])))
+      (a ([href (route-href (user 5))] [target "_blank"] [id "svg-blank"]) (rect ([x 30] [width 20] [height 20]))))
     (p ([id "mark"]) (text (if (-> s marked) "marked" "")))
     (p ([id "hashes"]) (int (cast i64 (-> s hashes))))
     (main

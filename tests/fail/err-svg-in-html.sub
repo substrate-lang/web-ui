@@ -1,0 +1,6 @@
+;; An SVG element outside svg, reported at its name.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (div (circle ([r 5]))))
+(define (main) 0)

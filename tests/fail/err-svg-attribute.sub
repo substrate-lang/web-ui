@@ -1,0 +1,6 @@
+;; An attribute that SVG does not have, here in the wrong case, reported at its name.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (svg ([viewbox "0 0 10 10"])))
+(define (main) 0)

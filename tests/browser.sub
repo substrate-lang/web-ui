@@ -2,9 +2,7 @@
 (require-unqualified std/test/browser)
 (require-unqualified std/test/test)
 (require server "support/server.sub")
-
-(define (ends? [s string] [end string]) -> bool
-  (and (>= (-> s length) (-> end length)) (== (slice s (- (-> s length) (-> end length))) end)))
+(require-unqualified std/string)
 
 (test counter
   (with-browser (b "../examples/counter.sub")
@@ -76,13 +74,13 @@
 (test route-served #:grants ((net "127.0.0.1"))
   (with-browser (b "routed" #:server server:main #:url "users/7")
     (expect-text b (by-css "#page") "user 7")
-    (expect (ends? (browser-url b) "/users/7/"))
+    (expect (string-suffix? (browser-url b) "/users/7/"))
     (browser-click! b (by-role "button" "Mark"))
     (browser-click! b (by-css "#nope"))
     (expect-text b (by-css "#page") "lost")
     (expect-text b (by-css "title") "Lost")
     (expect-text b (by-css "#mark") "")
-    (expect (ends? (browser-url b) "/nope/"))
+    (expect (string-suffix? (browser-url b) "/nope/"))
     (browser-click! b (by-css "#home"))
     (expect-text b (by-css "#page") "home")
     (browser-back! b)
@@ -112,16 +110,16 @@
 (test route-mounted-served #:grants ((net "127.0.0.1"))
   (with-browser (b "outer" #:server server:main #:url "inner/users/7/")
     (expect-text b (by-css "#page") "user 7")
-    (expect (ends? (browser-url b) "/inner/users/7/"))
+    (expect (string-suffix? (browser-url b) "/inner/users/7/"))
     (browser-click! b (by-role "button" "Mark"))
     (browser-click! b (by-css "#draft"))
     (expect-text b (by-css "#page") "draft")
-    (expect (ends? (browser-url b) "/inner/draft/"))
+    (expect (string-suffix? (browser-url b) "/inner/draft/"))
     (expect-text b (by-css "#mark") "marked")
     (browser-click! b (by-css "#nope"))
     (expect-text b (by-css "#page") "lost")
     (expect-text b (by-css "#mark") "")
-    (expect (ends? (browser-url b) "/inner/nope/"))))
+    (expect (string-suffix? (browser-url b) "/inner/nope/"))))
 
 (test route-forms
   (with-browser (b "routed")
@@ -200,6 +198,35 @@
     (browser-click! b (by-role "button" "Save"))
     (browser-click! b (by-css "#user"))
     (expect-text b (by-css "#page") "user 7")))
+
+(test route-svg
+  (with-browser (b "routed")
+    (browser-click! b (by-role "button" "Mark"))
+    (browser-click! b (by-css "#svg-blank"))
+    (expect-text b (by-css "#page") "home")
+    (expect-text b (by-css "#mark") "marked")
+    (browser-click! b (by-css "#svg-user"))
+    (expect-text b (by-css "#page") "user 4")
+    (expect-equal (browser-url b) "http://localhost/users/4/")
+    (expect-text b (by-css "#mark") "marked")))
+
+(test svg
+  (with-browser (b "svg.sub")
+    (expect-equal (-> (browser-box b (by-css "#dot")) width) 20.0)
+    (expect-equal (-> (browser-box b (by-css "#marker rect")) width) 10.0)
+    (expect (> (-> (browser-box b (by-css "#inside")) width) 0.0))
+    (expect-text b (by-css "#label") "still")
+    (expect-missing b (by-css "#box"))
+    (browser-click! b (by-role "button" "Toggle"))
+    (expect-equal (-> (browser-box b (by-css "#box")) width) 30.0)
+    (browser-click! b (by-role "button" "Add"))
+    (expect-equal (-> (browser-box b (by-css "circle.dot")) width) 10.0)
+    (browser-click! b (by-role "button" "Add"))
+    (expect-count b (by-css "circle.dot") 2)
+    (let ([x (-> (browser-box b (by-css "#dot")) x)])
+      (browser-click! b (by-role "button" "Move"))
+      (expect-text b (by-css "#label") "moved")
+      (expect-equal (- (-> (browser-box b (by-css "#dot")) x) x) 50.5))))
 
 (test route-ignored
   (with-browser (b "routed")

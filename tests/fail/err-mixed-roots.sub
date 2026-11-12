@@ -1,0 +1,7 @@
+;; A view that starts with both HTML and SVG elements, reported at the view.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (p "x")
+  (circle ([r 5])))
+(define (main) 0)

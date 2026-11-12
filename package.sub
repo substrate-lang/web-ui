@@ -1,6 +1,6 @@
 (package web-ui
-  (version "0.11.1")
-  (substrate "0.11.0")
+  (version "0.11.2")
+  (substrate "0.11.1")
   (one-copy)
   (exports examples/counter examples/rows router trace ui)
   (tests (browser))

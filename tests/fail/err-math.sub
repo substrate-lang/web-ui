@@ -1,0 +1,6 @@
+;; MathML, which views do not support, reported at its name.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (div (math "x")))
+(define (main) 0)
