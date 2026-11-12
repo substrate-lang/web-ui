@@ -1,0 +1,12 @@
+mount
+template 1 <svg viewBox="0 0 10 10"><circle data-n cy="2.5"></circle><!--a--><title>a spot</title><text x="1" y="9">label</text><foreignObject width="10" height="10"><p>html</p></foreignObject></svg>
+clone 1 as #3 with 2 in #0 before #0
+attr #4 cx="1.5"
+attr #4 r="2"
+attr #4 fill="red"
+--
+update: the circle moves, and the gradient appears
+attr #4 cx="3.25"
+template 2 <linearGradient id="g"><stop offset="0"></stop></linearGradient>
+clone 2 as #6 with 0 in #0 before #5
+--

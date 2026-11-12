@@ -17,6 +17,7 @@
 (require-unqualified host/web/location)
 (require-unqualified std/web/dom)
 (require-unqualified std/http/url)
+(require-unqualified std/string)
 (require-unqualified std/http/routable)
 
 (provide router-start! router-mounted! navigate! navigate-replace! navigate-with! navigate-back! navigate-forward!
@@ -117,9 +118,7 @@
     (ui-route! route type)
     (arena-free (& old))))
 
-(define (has-fragment? [href string]) -> bool
-  (for ([i u32 0]) (< i (-> href length)) (+= i 1) (when (== (@ href i) #\#) (return #t)))
-  #f)
+(define (has-fragment? [href string]) -> bool (< (string-index href #\#) (-> href length)))
 
 ;; Navigates in place to href, resolved against the URL, and returns whether it did. It leaves a URL of another origin,
 ;; one that no route matches, or one that changes only the fragment to the browser.
@@ -200,7 +199,8 @@
 (define (has-word? [s string] [word string]) -> bool
   (let ([start u32 0])
     (for ([i u32 0]) (<= i (-> s length)) (+= i 1)
-      (when (or (== i (-> s length)) (== (@ s i) 32) (== (@ s i) 9) (== (@ s i) 10) (== (@ s i) 12) (== (@ s i) 13))
+      (when (or (== i (-> s length)) (== (@ s i) #\space) (== (@ s i) #\tab) (== (@ s i) #\newline) (== (@ s i) 12)
+                (== (@ s i) #\return))
         (when (== (slice s start i) word) (return #t))
         (set! start (+ i 1))))
     #f))
@@ -210,14 +210,27 @@
 
 (define (prevent!) (dom-call-now! dom-event "preventDefault" (dom-values)))
 
+(define svg-namespace string "http://www.w3.org/2000/svg")
+
+(define (attribute-text [name string]) -> string
+  (dom-call-text dom-event "currentTarget.getAttribute" (dom-values (dom-text name))))
+
+(define (link-url [a (ptr arena)] [svg bool]) -> string
+  (if svg
+      (url-resolve a (dom-read-text dom-event "currentTarget.baseURI") (attribute-text "href"))
+      (dom-read-text dom-event "currentTarget.href")))
+
 (define (clicked)
-  (let ([target (dom-read-text dom-event "currentTarget.target")])
+  (let* ([svg (== (dom-read-text dom-event "currentTarget.namespaceURI") svg-namespace)]
+         [target (if svg (attribute-text "target") (dom-read-text dom-event "currentTarget.target"))]
+         [a (make-arena)])
     (unless (or (has-attribute? dom-event "currentTarget.hasAttribute" "download")
                 (!= (dom-read-number dom-event "button") 0.0) (key-held?)
                 (!= (dom-read-number dom-event "defaultPrevented") 0.0)
                 (and (> (-> target length) 0) (!= target "_self"))
                 (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
-      (when (went! (dom-read-text dom-event "currentTarget.href") #f #f none) (prevent!)))))
+      (when (went! (link-url (& a) svg) #f #f none) (prevent!)))
+    (arena-free (& a))))
 
 (define (chosen [submitter u32] [attribute string] [own string] [form string]) -> string
   (if (and (!= (dom-read-number submitter "nodeType") 0.0) (has-attribute? submitter "hasAttribute" attribute))

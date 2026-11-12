@@ -1,0 +1,6 @@
+;; An HTML element inside svg, reported at its name.
+(require-unqualified web-ui/ui)
+
+(view (page)
+  (svg (div "x")))
+(define (main) 0)

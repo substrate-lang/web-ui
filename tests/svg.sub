@@ -1,0 +1,44 @@
+;; SVG in views: a circle whose position is a number, a rect that comes and goes, a list of dots, a view whose root is
+;; a g, a text element with changing text, and HTML in a foreignObject.
+(require-unqualified web-ui)
+
+(struct dot [id u32] [x f64])
+(struct drawing-state [x f64] [shown bool] [dots (ptr dot)] [count u32] [label string])
+(variant drawing-message [moved] [toggled] [added])
+
+(define (started [s (ptr drawing-state)])
+  (set! (-> s x) 20.0)
+  (set! (-> s dots) (cast (ptr dot) (malloc (* 4 (sizeof dot)))))
+  (set! (-> s label) "still"))
+
+(define (changed [s (ptr drawing-state)] [m (ptr drawing-message)])
+  (match m
+    [moved (+= (-> s x) 50.5) (set! (-> s label) "moved")]
+    [toggled (set! (-> s shown) (not (-> s shown)))]
+    [added
+     (when (< (-> s count) 4)
+       (set! (@ (+ (-> s dots) (-> s count))) (dot #:id (-> s count) #:x (+ 20.0 (* 25.0 (cast f64 (-> s count))))))
+       (+= (-> s count) 1))]))
+
+(view (marker [x i32])
+  (g ([id "marker"]) (rect ([x x] [y 60] [width 10] [height 10]))))
+
+(component (drawing)
+  #:state [s drawing-state]
+  #:messages drawing-message
+  #:update changed
+  #:init started
+  (div
+    (button ([on click moved]) "Move")
+    (button ([on click toggled]) "Toggle")
+    (button ([on click added]) "Add")
+    (svg ([width 300] [height 120] [viewBox "0 0 300 120"])
+      (circle ([id "dot"] [cx (-> s x)] [cy 20] [r 10]))
+      (when (-> s shown) (rect ([id "box"] [x 100] [y 10] [width 30] [height 20])))
+      (each [d (-> s dots) (-> s count)] #:key (-> d id) (circle ([class "dot"] [cx (-> d x)] [cy 50] [r 5])))
+      (marker 200)
+      (text ([id "label"] [x 150] [y 100]) (text (-> s label)))
+      (foreignObject ([x 0] [y 70] [width 120] [height 30])
+        (p ([id "inside"]) "inside")))))
+
+(attach ["root" (drawing)])

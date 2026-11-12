@@ -1,0 +1,6 @@
+;; An SVG attribute whose value is neither a string nor a number, reported at the value.
+(require-unqualified web-ui/ui)
+
+(view (page [on bool])
+  (svg (circle ([r on]))))
+(define (main) 0)

@@ -1,0 +1,30 @@
+;; SVG in a view: its templates keep SVG's names, number attributes become text, and title and text are SVG's elements.
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
+(provide main)
+
+(struct model [x f64] [r i32] [fill string] [shown bool])
+
+(view (spot [m (ptr model)])
+  (svg ([viewBox "0 0 10 10"])
+    (circle ([cx (-> m x)] [cy 2.5] [r (-> m r)] [fill (-> m fill)]))
+    (when (-> m shown) (linearGradient ([id "g"]) (stop ([offset 0]))))
+    (title "a spot")
+    (text ([x 1] [y 9]) "label")
+    (foreignObject ([width 10] [height 10]) (p "html"))))
+
+(define the-model model)
+(define a-spot spot.state)
+
+(define (main)
+  (set! (-> the-model x) 1.5)
+  (set! (-> the-model r) 2)
+  (set! (-> the-model fill) "red")
+  (printf "mount\n")
+  (spot.mount (& a-spot) 0 0 (& the-model))
+  (trace-patches!)
+  (printf "update: the circle moves, and the gradient appears\n")
+  (set! (-> the-model x) 3.25)
+  (set! (-> the-model shown) #t)
+  (spot.update (& a-spot) (& the-model))
+  (trace-patches!))

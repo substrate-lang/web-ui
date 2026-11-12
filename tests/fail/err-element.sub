@@ -1,4 +1,4 @@
-;; An element that is neither HTML nor a view, reported at its name.
+;; An element that is not HTML, SVG or a view, reported at its name.
 (require-unqualified web-ui/ui)
 
 (struct item [id u32] [name string])
