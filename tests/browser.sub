@@ -214,6 +214,7 @@
   (with-browser (b "svg.sub")
     (expect-equal (-> (browser-box b (by-css "#dot")) width) 20.0)
     (expect-equal (-> (browser-box b (by-css "#marker rect")) width) 10.0)
+    (expect-equal (-> (browser-box b (by-css "#badge circle")) width) 16.0)
     (expect (> (-> (browser-box b (by-css "#inside")) width) 0.0))
     (expect-text b (by-css "#label") "still")
     (expect-missing b (by-css "#box"))

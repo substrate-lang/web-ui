@@ -1,5 +1,5 @@
 ;; SVG in views: a circle whose position is a number, a rect that comes and goes, a list of dots, a view whose root is
-;; a g, a text element with changing text, and HTML in a foreignObject.
+;; a g, another whose root is an svg element, a text element with changing text, and HTML in a foreignObject.
 (require-unqualified web-ui)
 
 (struct dot [id u32] [x f64])
@@ -23,6 +23,9 @@
 (view (marker [x i32])
   (g ([id "marker"]) (rect ([x x] [y 60] [width 10] [height 10]))))
 
+(view (badge)
+  (svg ([id "badge"] [width 16] [height 16]) (circle ([cx 8] [cy 8] [r 8]))))
+
 (component (drawing)
   #:state [s drawing-state]
   #:messages drawing-message
@@ -32,6 +35,7 @@
     (button ([on click moved]) "Move")
     (button ([on click toggled]) "Toggle")
     (button ([on click added]) "Add")
+    (badge)
     (svg ([width 300] [height 120] [viewBox "0 0 300 120"])
       (circle ([id "dot"] [cx (-> s x)] [cy 20] [r 10]))
       (when (-> s shown) (rect ([id "box"] [x 100] [y 10] [width 30] [height 20])))

@@ -801,7 +801,7 @@
            [children (if given (cddr l) (cdr l))]
            [space (element-space (car l) tag)]
            [node datum 0])
-      (rooted! space)
+      (rooted! (if (== tag 'svg) 'any space))
       (html-open! (html-of b) (symbol->string tag))
       (for/each ([a attributes])
         (let ([al (syntax->list a)])
