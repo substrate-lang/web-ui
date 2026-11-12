@@ -347,8 +347,8 @@
               (free l))
             (set! at (& (-> l next))))))))
 
-;; ui-route! makes route, of the type named type, the current route and gives it to the components that take routes,
-;; then draws.
+;; ui-route! makes route, of the type named type, the current route. It gives the route to the components that take
+;; routes, and then it draws.
 (define (ui-route! [route (ptr void)] [type string])
   (set! route-now route)
   (set! route-type type)
@@ -1254,7 +1254,7 @@
     (unless (and (identifier? t) (let ([info (type-info t)]) (and (pair? info) (== (car info) 'variant))))
       (raise-syntax-error who (datum->string (format "the ~a must be a variant type" `(,what))) t)))
 
-  ;; A case of the messages, which must hold one value, and that value's type.
+  ;; The type of the one value that a case of the messages holds. The case must hold exactly one value.
   (define (message-case [messages datum] [c datum] [option datum]) -> datum
     (let ([found (if (identifier? c) (variant-case messages c) 0)])
       (unless (and (!= found 0) (== (length (cdr found)) 1))

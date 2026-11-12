@@ -1,5 +1,5 @@
-;; The test app's server: the site's files, and the app for a path that names none, as the app's routes read it. The
-;; app is at / and at /inner/, where the outer site mounts it.
+;; The test app's server. It answers with the site's files, and with the app for a path that names no file, as the
+;; app's routes read that path. The app is at / and at /inner/, where the outer site mounts it.
 (require-unqualified host/events)
 (require-unqualified std/http)
 (require-unqualified std/http/server)

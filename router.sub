@@ -1,11 +1,11 @@
 ;; The router keeps the document's URL as a route, a value of a routable type (std/http/routable.sub). It keeps the
 ;; route in step with the browser's history and gives it to the components that take routes (#:route). attach starts
 ;; it. The routes read the path from the directory of the document's base URL on, so a page with <base href="/notes/">
-;; reads /notes/7/ as /7/. A URL outside that directory is no route. route-href writes the whole path.
-;; A click on a link navigates in place when one of the routes matches the link's URL. It does not when a key or a
-;; mouse button other than the first is held, or when the link has a target, a download attribute or rel external. A
-;; form that submits with GET to the document navigates in place the same way, to its action's URL with the form's
-;; query. So do navigate! and Back and Forward. The browser loads other URLs.
+;; reads /notes/7/ as /7/. A URL outside that directory matches no route. route-href writes the whole path.
+;; A click on a link navigates in place when one of the routes matches the link's URL. The router leaves the click to
+;; the browser when a key or a mouse button other than the first is held, or when the link has a target, a download
+;; attribute or rel external. A form that submits with GET to the document navigates in place the same way, to its
+;; action's URL with the form's query. navigate!, Back and Forward navigate in place too. The browser loads other URLs.
 ;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
 ;; moves to the start of the document and its title is announced. The page scrolls to the URL's fragment or to its top,
 ;; or back to where it was for Back, Forward and a reload. Each entry's state starts with the router's state: a mark,
@@ -65,7 +65,6 @@
     (buffer-add! b (slice (cast (ptr u8) (& sy)) 8))
     (buffer-add! b app)))
 
-;; Writes the current entry's state again, with where the page is scrolled now.
 (define (kept!)
   (let ([s (history-state)] [b (make-buffer)])
     (state! (& b) index (dom-read-number dom-document "scrollingElement.scrollLeft")
@@ -82,8 +81,8 @@
 
 ;; ---- routes ----
 
-;; Reads at into the arena as a route, which r is set to, and answers the URL of the route: at, or its canonical URL
-;; when the path moved. read is set to what reading answered.
+;; Reads at into the arena as a route and sets r to it. It returns the route's URL, which is at, or the canonical URL
+;; when the path moved, and it sets read to what reading returned.
 (define (route-of [a (ptr arena)] [at string] [r (ptr (ptr void))] [read (ptr u32)]) -> string
   (let ([to (make-buffer)] [p (arena-alloc a size)] [found (copy a at)])
     (set! (@ read) (reader a at base p (& to)))
@@ -110,8 +109,8 @@
     (ui-route! route type)
     (arena-free (& old))))
 
-;; Navigates in place to href, resolved against the URL, and answers whether it did. A URL of another origin, or one
-;; that no route matches, is the browser's.
+;; Navigates in place to href, resolved against the URL, and returns whether it did. It leaves a URL of another origin,
+;; or one that no route matches, to the browser.
 (define (went! [href string] [replace bool] [keep bool] [app (slice u8)]) -> bool
   (unless started (return #f))
   (let* ([next (make-arena)] [to (url-resolve (& next) url href)] [target (url-target to)])
@@ -200,7 +199,6 @@
                 (has-word? (dom-read-text dom-event "currentTarget.rel") "external"))
       (when (went! (dom-read-text dom-event "currentTarget.href") #f #f none) (prevent!)))))
 
-;; The submitter's property when it has the attribute, and else the form's.
 (define (chosen [submitter u32] [attribute string] [own string] [form string]) -> string
   (if (and (!= (dom-read-number submitter "nodeType") 0.0) (has-attribute? submitter "hasAttribute" attribute))
       (dom-read-text submitter own)
@@ -312,7 +310,7 @@
 
 (define (route-url) -> string url)
 
-;; The app's part of the current entry's state, until the next navigation.
+;; route-state gives the app's part of the current entry's state, which lasts until the next navigation.
 (define (route-state) -> (slice u8)
   (let* ([s (history-state)] [app (app-in s)] [p (cast (ptr u8) (arena-alloc (& held) (-> app length)))])
     (memcpy p (-> app items) (-> app length))
