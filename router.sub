@@ -4,12 +4,13 @@
 ;; reads /notes/7/ as /7/. A URL outside that directory matches no route. route-href writes the whole path.
 ;; A click on a link navigates in place when one of the routes matches the link's URL. The router leaves the click to
 ;; the browser when a key or a mouse button other than the first is held, or when the link has a target, a download
-;; attribute or rel external. A form that submits with GET to the document navigates in place the same way, to its
-;; action's URL with the form's query. navigate!, Back and Forward navigate in place too. The browser loads other URLs.
-;; A component that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus
-;; moves to the start of the document and its title is announced. The page scrolls to the URL's fragment or to its top,
-;; or back to where it was for Back, Forward and a reload. Each entry's state starts with the router's state: a mark,
-;; the entry's place in the history, and where the page was scrolled.
+;; attribute or rel external. It also leaves a link that changes only the fragment, so the browser scrolls to it and
+;; fires hashchange. A form that submits with GET to the document navigates in place the same way, to its action's URL
+;; with the form's query. navigate!, Back and Forward navigate in place too. The browser loads other URLs. A component
+;; that holds the document on its route (#:leaving) stops a navigation. Once the new route is drawn, focus moves to the
+;; start of the document and its title is announced. The page scrolls to the URL's fragment or to its top, or back to
+;; where it was for Back, Forward and a reload. Each entry's state starts with the router's state: a mark, the entry's
+;; place in the history, and where the page was scrolled.
 (require-unqualified "ui.sub")
 (require-unqualified host/events)
 (require-unqualified host/web/history)
@@ -44,6 +45,9 @@
 (define scrolling u32 0)
 (define restore-x f64 0.0)
 (define restore-y f64 0.0)
+(define jumping bool #f)
+(define jump-replace bool #f)
+(define jump-app buffer)
 (define announcer u32 0)
 (define popped event-head)
 (define leaving event-head)
@@ -65,12 +69,16 @@
     (buffer-add! b (slice (cast (ptr u8) (& sy)) 8))
     (buffer-add! b app)))
 
-(define (kept!)
-  (let ([s (history-state)] [b (make-buffer)])
+(define (scrolled! [app (slice u8)])
+  (let ([b (make-buffer)])
     (state! (& b) index (dom-read-number dom-document "scrollingElement.scrollLeft")
-            (dom-read-number dom-document "scrollingElement.scrollTop") (app-in s))
+            (dom-read-number dom-document "scrollingElement.scrollTop") app)
     (history-replace-state (buffer-bytes (& b)) "" 0)
-    (buffer-free! (& b))
+    (buffer-free! (& b))))
+
+(define (kept!)
+  (let ([s (history-state)])
+    (scrolled! (app-in s))
     (free (-> s items))))
 
 (define (entered! [at string] [replace bool] [app (slice u8)])
@@ -109,12 +117,24 @@
     (ui-route! route type)
     (arena-free (& old))))
 
+(define (has-fragment? [href string]) -> bool
+  (for ([i u32 0]) (< i (-> href length)) (+= i 1) (when (== (@ href i) #\#) (return #t)))
+  #f)
+
 ;; Navigates in place to href, resolved against the URL, and returns whether it did. It leaves a URL of another origin,
-;; or one that no route matches, to the browser.
+;; one that no route matches, or one that changes only the fragment to the browser.
 (define (went! [href string] [replace bool] [keep bool] [app (slice u8)]) -> bool
   (unless started (return #f))
   (let* ([next (make-arena)] [to (url-resolve (& next) url href)] [target (url-target to)])
     (when (!= (url-origin to) (url-origin url))
+      (arena-free (& next))
+      (return #f))
+    (when (and (== target (url-target url)) (has-fragment? to))
+      (kept!)
+      (set! jumping #t)
+      (set! jump-replace (or replace (== to url)))
+      (set! (-> jump-app length) 0)
+      (buffer-add! (& jump-app) app)
       (arena-free (& next))
       (return #f))
     (when (== target (url-target url))
@@ -231,24 +251,30 @@
   (if reverting
       (set! reverting #f)
       (let* ([s (history-state)] [ours (ours? s)] [to (if ours (index-in s) index)] [href (location-href)]
-             [same (== (url-target href) (url-target url))])
-        (if (and (not same) (ui-held href))
-            (unless (== to index)
-              (set! reverting #t)
-              (history-go (- (cast i32 index) (cast i32 to))))
-            (begin
-              (set! index to)
-              (set! restore-x (if ours (x-in s) 0.0))
-              (set! restore-y (if ours (y-in s) 0.0))
-              (set! scrolling (if ours 2 1))
-              (unless ours (entered! "" #t (app-in s)))
-              (if same
-                  (begin
-                    (set! url (copy (& held) href))
-                    (settle!))
-                  (let* ([next (make-arena)] [r (ptr void) 0] [read u32 0] [at (route-of (& next) href (& r) (& read))])
-                    (unless (== at href) (history-replace-state s at 0))
-                    (commit! next r at)))))
+             [same (== (url-target href) (url-target url))] [jumped (and jumping same (not ours))])
+        (set! jumping #f)
+        (cond [jumped
+               (unless jump-replace (+= index 1))
+               (scrolled! (buffer-bytes (& jump-app)))
+               (set! url (copy (& held) href))]
+              [(and (not same) (ui-held href))
+               (unless (== to index)
+                 (set! reverting #t)
+                 (history-go (- (cast i32 index) (cast i32 to))))]
+              [else
+               (set! index to)
+               (set! restore-x (if ours (x-in s) 0.0))
+               (set! restore-y (if ours (y-in s) 0.0))
+               (set! scrolling (if ours 2 1))
+               (unless ours (entered! "" #t (app-in s)))
+               (if same
+                   (begin
+                     (set! url (copy (& held) href))
+                     (settle!))
+                   (let* ([next (make-arena)] [r (ptr void) 0] [read u32 0]
+                          [at (route-of (& next) href (& r) (& read))])
+                     (unless (== at href) (history-replace-state s at 0))
+                     (commit! next r at)))])
         (free (-> s items))
         (free (-> href bytes)))))
 
