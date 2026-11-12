@@ -222,8 +222,6 @@
   (let ([f flush]) (when (!= f 0) (f)))
   (let ([d drawn]) (when (!= d 0) (d))))
 
-(define (ui-render-idle!) (when (== depth 0) (ui-render!)))
-
 (define (wrong-type! [who string] [kind string] [declared string] [given string])
   (let ([b (make-buffer)])
     (buffer-add-string! (& b) who)
