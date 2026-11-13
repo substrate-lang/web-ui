@@ -1,6 +1,8 @@
 ;; The test app's server, with its pages rendered: a path that the app's routes read gets the app's page with the app
 ;; rendered into it (app-render). Under /frozen/, such a page comes without its program, so the browser shows only what
 ;; was rendered, and a script in its place tells the tests that the page is ready. Other paths get the site's files.
+;; marked serves the pages with a script that marks the rendered elements before the program starts, and mismatched
+;; does the same with the home page rendered for every path.
 (require-unqualified host/fs)
 (require-unqualified std/http)
 (require-unqualified std/http/server)
@@ -12,24 +14,28 @@
 (require-unqualified "../places.sub")
 (require routed "../routed.sub")
 
-(provide main)
+(provide main marked mismatched)
 
 (define server http-server)
 (define files http-files)
+(define marking bool #f)
+(define mismatching bool #f)
 
 (define script string "<script type=\"module\" src=\"host/web/start.mjs\"></script>")
+
+(define mark string "<script>for (const e of document.querySelectorAll('#root *')) e.dataset.rendered = ''</script>")
 
 (define (rendered! [r (ptr http-request)] [path string] [frozen bool])
   (let ([page (slice u8)] [out (make-buffer)] [why error])
     (unless (fs-read-file (joined-path (-> files root) "index.html") (& page) (& why))
       (http-answer-text! r 500 (error-text (& why)))
       (return))
-    (app-render (& routed:routed-app) (& out) (cast string page) path 0)
-    (let ([html (buffer-string (& out))])
-      (when frozen
-        (let ([at (string-find html script)])
-          (set! html (string-append 0 (slice html 0 at) "<script>window.ready = true</script>"
-                                    (slice html (+ at (-> script length)) (-> html length))))))
+    (app-render (& routed:routed-app) (& out) (cast string page) (if mismatching "/" path) 0)
+    (let* ([html (buffer-string (& out))] [at (string-find html script)])
+      (cond [frozen
+             (set! html (string-append 0 (slice html 0 at) "<script>window.ready = true</script>"
+                                       (slice html (+ at (-> script length)) (-> html length))))]
+            [marking (set! html (string-append 0 (slice html 0 at) mark (slice html at (-> html length))))])
       (http-respond! r 200)
       (http-header! r "content-type" "text/html; charset=utf-8")
       (http-send-text! r html))
@@ -50,8 +56,16 @@
     (buffer-add-string! (& line) "/\n")
     (host-write 1 (buffer-bytes (& line)))))
 
-(define (main)
+(define (served! [mark bool] [mismatch bool])
+  (set! marking mark)
+  (set! mismatching mismatch)
   (set! (-> files root) (@ (host-args) 0))
   (set! (-> server listening) listening)
   (let ([why error])
     (unless (http-serve! (& server) 0 handle (& why)) (host-exit 1 (error-text (& why))))))
+
+(define (main) (served! #f #f))
+
+(define (marked) (served! #t #f))
+
+(define (mismatched) (served! #t #t))

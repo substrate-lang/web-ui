@@ -4,13 +4,13 @@ freed another
 <title data-ui="Test">Rows &amp; "rows"</title>
 <style data-ui>.page { margin: 0 }
 .note { color: red }
-</style><div id="root"><!--[--><!--[--><h1><!--t-->Rows &amp; "rows"<!----> &amp; <!--t-->2<!----></h1><button data-n tabindex="2">+</button><ul><!--[--><li data-n class="done"><!--t-->one<!----><!--[--><b>done</b><!--]--><!--a--></li><!--]--><!--[--><li data-n class=""><!--t-->two &lt;2&gt;<!----><!--[--><i>to do</i><!--]--><!--a--></li><!--]--><!--a--></ul><ol><!--[--><li><!--t-->one<!----></li><!--]--><!--[--><li><!--t-->two &lt;2&gt;<!----></li><!--]--><!--a--></ol><!--[--><p>many</p><!--]--><!--a--><textarea data-n>Rows &amp; "rows"</textarea><!--[--><aside class="note"><!--t-->a &lt;note&gt;<!----></aside><!--]--><!--a--><!--[--><aside class="note"><!--t-->another<!----></aside><!--]--><!--a--><svg width="20" height="20"><circle data-n cy="5" r="2.5" cx="2"></circle></svg><!--]--><!--a--><!--]--></div>
+</style><div id="root"><!--[e7115ef5--><!--[54d69e66--><h1><!--t-->Rows &amp; "rows"<!----> &amp; <!--t-->2<!----></h1><button data-n tabindex="2">+</button><ul><!--[6bee6fae--><li data-n class="done"><!--t-->one<!----><!--[0c913ece--><b>done</b><!--]--><!--a--></li><!--]--><!--[6bee6fae--><li data-n class=""><!--t-->two &lt;2&gt;<!----><!--[d37158e8--><i>to do</i><!--]--><!--a--></li><!--]--><!--a--></ul><ol><!--[776612f5--><li><!--t-->one<!----></li><!--]--><!--[776612f5--><li><!--t-->two &lt;2&gt;<!----></li><!--]--><!--a--></ol><!--[574d48a1--><p>many</p><!--]--><!--a--><textarea data-n>Rows &amp; "rows"</textarea><!--[439affec--><aside class="note"><!--t-->a &lt;note&gt;<!----></aside><!--]--><!--a--><!--[439affec--><aside class="note"><!--t-->another<!----></aside><!--]--><!--a--><svg width="20" height="20"><circle data-n cy="5" r="2.5" cx="2"></circle></svg><!--]--><!--a--><!--]--></div>
 --
 <!doctype html>
 <head>
 <title data-ui="Trips">User</title>
 <base href="/inner/">
 </head>
-<div id="root"><!--[--><nav><a data-n href="/inner/users/7/" aria-current="page">User 7</a></nav><!--[--><p>user <!--t-->7<!----></p><!--]--><!--a--><!--]--></div>
+<div id="root"><!--[f9d6b146--><nav><a data-n href="/inner/users/7/" aria-current="page">User 7</a></nav><!--[e6090908--><p>user <!--t-->7<!----></p><!--]--><!--a--><!--]--></div>
 --
 read 0

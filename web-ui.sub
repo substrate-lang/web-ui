@@ -16,20 +16,22 @@
 
 (define (stop-propagation!) (dom-call-now! dom-event "stopPropagation" (dom-values)))
 
-;; attach-node gives the element with the id. When app-render wrote the element's contents, attach-node takes them out,
-;; with the stylesheets that app-render added, for the element's component or view to draw them again.
+;; attach-node gives the element with the id. When app-render wrote the element's contents, attach-node takes out the
+;; stylesheets that app-render added, for the views to add their own, and the element's component or view claims the
+;; contents as it mounts (dom-claiming!).
 (define (attach-node [id string]) -> u32
-  (let ([n (dom-element id)])
+  (let ([n (dom-element id)] [rendered #f])
     (when (== n 0)
       (let ([b (make-buffer)])
         (buffer-add-string! (& b) "attach: no element has the id ")
         (buffer-add-string! (& b) id)
         (host-trap (buffer-string (& b)))))
-    (when (== (dom-read-text n "firstChild.data") "[")
+    (set! rendered (string-prefix? (dom-read-text n "firstChild.data") "["))
+    (when rendered
       (let ([s (dom-call-node dom-document "querySelector" (dom-values (dom-text "style[data-ui]")))])
         (unless (== (dom-read-number s "nodeType") 0.0) (dom-call-now! s "remove" (dom-values)))
-        (dom-forget-node! s))
-      (dom-call-now! n "replaceChildren" (dom-values)))
+        (dom-forget-node! s)))
+    (dom-claiming! rendered)
     n))
 
 ;; The page's own title, which app-render keeps in the title's data-ui attribute when a view gave another.
@@ -163,6 +165,7 @@
               (attach-start!)
               #,@(if (== routes 0) nil `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes))))
               #,@(reverse mounts)
+              (dom-claiming! #f)
               (ui-titles!)
               (dom-flush!)
               (ui-started!)

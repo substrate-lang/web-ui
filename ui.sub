@@ -529,7 +529,8 @@
 ;; ---- run-time support: rendering ----
 
 ;; While rendering, app-render (web-ui.sub) has the views write HTML: their templates' HTML, each piece between
-;; <!--[--> and <!--]-->, and each text between <!--t--> and <!---->. Each render adds a view's stylesheet once.
+;; <!--[DIGEST--> and <!--]-->, where DIGEST names the piece's template, and each text between <!--t--> and <!---->. Each
+;; render adds a view's stylesheet once.
 (define rendering bool #f)
 (define renders u32 0)
 (define render-styles buffer)
@@ -577,7 +578,10 @@
 
 (define (ui-render-raw! [out (ptr buffer)] [s string]) (buffer-add-string! out s))
 
-(define (ui-render-open! [out (ptr buffer)]) (buffer-add-string! out "<!--[-->"))
+(define (ui-render-open! [out (ptr buffer)] [digest string])
+  (buffer-add-string! out "<!--[")
+  (buffer-add-string! out digest)
+  (buffer-add-string! out "-->"))
 
 (define (ui-render-close! [out (ptr buffer)]) (buffer-add-string! out "<!--]-->"))
 
@@ -805,9 +809,19 @@
 
   (define (skip! [b (ptr block)]) (set! (-> b sent) (-> (html-of b) length)))
 
+  ;; The digest of a template's HTML, which the host compares when a piece is claimed (host/web/dom.mjs): FNV-1a of its
+  ;; bytes, in 8 hex digits.
+  (define (digest [html string]) -> string
+    (let ([h u32 2166136261] [out (make-buffer)] [hex "0123456789abcdef"])
+      (for ([i u32 0]) (< i (-> html length)) (+= i 1) (set! h (* (bit-xor h (cast u32 (@ html i))) 16777619)))
+      (for ([k u32 0]) (< k 8) (+= k 1) (buffer-add-byte! (& out) (cast i32 (@ hex (bit-and (>> h (- 28 (* k 4))) 15)))))
+      (buffer-string (& out))))
+
   (define (piece-code [b (ptr block)]) -> datum
     (chunk! b)
-    #`(begin (ui-render-open! out) #,@(reverse (-> b render)) (ui-render-close! out)))
+    #`(begin (ui-render-open! out #,(literal (string->datum (digest (buffer-string (html-of b))))))
+             #,@(reverse (-> b render))
+             (ui-render-close! out)))
 
   (define (statements [code datum]) -> datum (if (null? code) `(,#'(begin)) (reverse code)))
 
