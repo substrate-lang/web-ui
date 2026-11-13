@@ -93,10 +93,10 @@
     (item! 0 1 "one" #t)
     (item! 1 2 "two <2>" #f)
     (set! (-> the-model n) 2)
-    (app-render (& rows-app) (& b) "<!doctype html>\n<title>Test</title>\n<div id=\"root\"></div>\n" "/" "/" 0)
+    (app-render (& rows-app) (& b) "<!doctype html>\n<title>Test</title>\n<div id=\"root\"></div>\n" "/" 0)
     (printf "~a--~n" (buffer-string (& b)))
     (set! (-> b length) 0)
     (let ([read (app-render (& trips-app) (& b)
                             "<!doctype html>\n<head>\n<title>Trips</title>\n<base href=\"/inner/\">\n</head>\n<div id=\"root\"></div>\n"
-                            "/inner/users/7/" "/inner/" 0)])
+                            "/inner/users/7/" 0)])
       (printf "~a--~nread ~a~n" (buffer-string (& b)) read))))

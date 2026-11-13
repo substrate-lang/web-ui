@@ -59,18 +59,24 @@
 
 ;; A web-app's render writes its roots into a page's HTML (app-render). A fact on the app names the function that puts
 ;; them in the document, so that a server's program does not keep it.
-(struct web-app [render (fn ((ptr buffer) string string string (ptr buffer)) -> u32)])
+(struct web-app [render (fn ((ptr buffer) string string (ptr buffer)) -> u32)])
 
-;; app-render writes into out the page, a document's HTML, with the app's roots rendered for target, a path and query
-;; under mount, the path that the page answers at. It returns what reading target returned, as routable.sub's url-read
-;; does, and on url-moved it writes the target to go to into to. out stays empty when the app's #:rendered declines the
-;; route. An app without routes renders its page for any target.
-(define (app-render [a (ptr web-app)] [out (ptr buffer)] [page string] [target string] [mount string] [to (ptr buffer)])
-  -> u32
-  ((-> a render) out page target mount to))
+;; app-render writes into out the page, a document's HTML, with the app's roots rendered for target, a path and query.
+;; The routes read target from the page's base, as the router does. It returns what reading target returned, as
+;; routable.sub's url-read does, and on url-moved it writes the target to go to into to. out stays empty when the app's
+;; #:rendered declines the route. An app without routes renders its page for any target.
+(define (app-render [a (ptr web-app)] [out (ptr buffer)] [page string] [target string] [to (ptr buffer)]) -> u32
+  ((-> a render) out page target to))
 
-;; The base that an app's routes read targets from: mount without its final slash.
-(define (app-base [mount string]) -> string (slice mount 0 (if (> (-> mount length) 0) (- (-> mount length) 1) 0)))
+;; The base of the page at target, as the router reads it: the directory of the page's <base href>, or of target, without
+;; its final slash.
+(define (page-base [a (ptr arena)] [page string] [target string]) -> string
+  (let* ([at (found-from page "<base href=\"" 0)]
+         [document (if (< at (-> page length))
+                       (let ([from (+ at 12)]) (url-resolve a target (slice page from (found-from page "\"" from))))
+                       target)]
+         [dir (url-path (url-target (url-resolve a document ".")))])
+    (slice dir 0 (if (> (-> dir length) 0) (- (-> dir length) 1) 0))))
 
 (begin-for-syntax
   (require-unqualified compiler/macros)
@@ -161,13 +167,13 @@
               (dom-flush!)
               (ui-started!)
               #,(if (== routes 0) #'(attach-scroll!) #'(router-mounted!)))
-            (define (#,render [out (ptr buffer)] [page string] [target string] [mount string] [to (ptr buffer)]) -> u32
+            (define (#,render [out (ptr buffer)] [page string] [target string] [to (ptr buffer)]) -> u32
               (let ([parts (cast (ptr buffer) (calloc #,n (sizeof buffer)))] [read u32 url-found] [rendering #t]
                     [route-arena (make-arena)])
                 #,@(if (== routes 0)
                        nil
                        `(,#`(let ([r (cast (ptr #,routes) (arena-alloc (& route-arena) (sizeof #,routes)))]
-                                  [base (app-base mount)])
+                                  [base (page-base (& route-arena) page target)])
                               (set! read (#,(routes-named routes '"url-read") (& route-arena) target base r to))
                               (cond [(or (== read url-moved) (== read url-bad)) (set! rendering #f)]
                                     #,@(if (== rendered 0) nil `(,#`[(== read url-found) (set! rendering (#,rendered r))])))

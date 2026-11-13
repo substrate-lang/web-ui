@@ -24,7 +24,7 @@
     (unless (fs-read-file (joined-path (-> files root) "index.html") (& page) (& why))
       (http-answer-text! r 500 (error-text (& why)))
       (return))
-    (app-render (& routed:routed-app) (& out) (cast string page) path "/" 0)
+    (app-render (& routed:routed-app) (& out) (cast string page) path 0)
     (let ([html (buffer-string (& out))])
       (when frozen
         (let ([at (string-find html script)])
