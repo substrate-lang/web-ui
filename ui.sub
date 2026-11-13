@@ -12,7 +12,12 @@
          ui-emit ui-send ui-root! ui-render! ui-flush-with! ui-update!
          ui-row ui-rows ui-each! ui-each-clear!
          ui-route-listen! ui-route-unlisten! ui-route! ui-guard! ui-unguard! ui-held ui-holding? ui-link-listen!
-         ui-form-listen! ui-navigator! ui-title! ui-titles! ui-title-first! ui-drawn!)
+         ui-form-listen! ui-navigator! ui-title! ui-titles! ui-title-first! ui-drawn!
+         ui-route-set! ui-route-now ui-route-check! ui-start-later! ui-started!
+         ui-render-begin! ui-render-end! ui-render-styles ui-render-titled? ui-render-title ui-render-raw! ui-render-open!
+         ui-render-close! ui-render-text! ui-render-int! ui-render-attr! ui-render-truth! ui-render-number!
+         ui-render-decimal! ui-render-content! ui-render-title! ui-render-style! ui-render-svg! ui-render-svg-typed!
+         ui-render-root)
 
 ;; ---- run-time support: slots ----
 
@@ -204,6 +209,7 @@
 ;; An ended instance's requests drop their events. One from request! is freed when its event comes, and one from
 ;; subscribe! is kept.
 (define (ui-instance-end! [i (ptr ui-instance)])
+  (forget-start! i)
   (let ([r (-> i requests)])
     (while (!= r 0)
       (let ([next (-> r next)])
@@ -242,7 +248,8 @@
   (for ([k u32 0]) (< k root-count) (+= k 1) ((@ roots k)))
   (ui-titles!)
   (let ([f flush]) (when (!= f 0) (f)))
-  (let ([d drawn]) (when (!= d 0) (d))))
+  (let ([d drawn]) (when (!= d 0) (d)))
+  (ui-started!))
 
 (define (wrong-type! [who string] [kind string] [declared string] [given string])
   (let ([b (make-buffer)])
@@ -270,6 +277,7 @@
     i))
 
 (define (ui-emit [events string] [e (ptr void)])
+  (when rendering (host-trap "emit!: rendering raises no events"))
   (let ([i (running "emit!")])
     (unless (== (-> i events) events) (wrong-type! "emit!" "events" (-> i events) events))
     (for ([k u32 0]) (< k (-> i heard-count)) (+= k 1)
@@ -277,6 +285,7 @@
         ((-> h call) (cast (ptr void) (-> h parent)) e)))))
 
 (define (ui-send [messages string] [m (ptr void)])
+  (when rendering (host-trap "send!: rendering sends no messages"))
   (let ([i (running "send!")])
     (unless (== (-> i messages) messages) (wrong-type! "send!" "messages" (-> i messages) messages))
     (ui-deliver i m)))
@@ -302,6 +311,11 @@
         (when (!= p 0) (set! (-> p next) (-> r next))))))
 
 (define (new-request [h handler] [once bool] [who string]) -> (ptr void)
+  (when rendering
+    (let ([b (make-buffer)])
+      (buffer-add-string! (& b) who)
+      (buffer-add-string! (& b) ": rendering starts no requests; start them in #:start")
+      (host-trap (buffer-string (& b)))))
   (let ([i (running who)] [r (cast (ptr ui-request) (malloc (sizeof ui-request)))])
     (set! (-> r handle) ui-request-heard)
     (set! (-> r instance) i)
@@ -320,6 +334,7 @@
 (define (subscribe! [h handler]) -> (ptr void) (new-request h #f "subscribe!"))
 
 (define (unsubscribe! [tag (ptr void)])
+  (when (== tag 0) (return))
   (let* ([r (cast (ptr ui-request) tag)] [i (-> r instance)])
     (when (-> r once) (host-trap "unsubscribe!: this tag is from request!, which frees itself"))
     (when (!= i 0) (unlink! i r))
@@ -354,10 +369,18 @@
     (set! (-> l deliver) deliver)
     (set! (-> l type) type)
     (set! (-> l next) route-listeners)
-    (set! route-listeners l)
-    (unless (== route-now 0)
-      (route-type! type)
-      (deliver i route-now ui-update!))))
+    (set! route-listeners l)))
+
+;; The current route, which a component that takes routes gets in its #:init, and render-page sets.
+(define (ui-route-now) -> (ptr void) route-now)
+
+(define (ui-route-set! [route (ptr void)] [type string])
+  (set! route-now route)
+  (set! route-type type))
+
+(define (ui-route-check! [type string])
+  (when (== route-now 0) (host-trap "#:route: this component takes routes, but no routes are attached"))
+  (route-type! type))
 
 (define (ui-route-unlisten! [i (ptr ui-instance)])
   (let ([at (& route-listeners)])
@@ -475,6 +498,134 @@
     ((-> i trapped) (-> i state) why)
     (ui-render!)))
 
+;; ---- run-time support: starting ----
+
+;; The instances mounted since the last drawing whose #:start has not run yet.
+(struct ui-start [instance (ptr ui-instance)] [run (fn ((ptr void)))])
+
+(define starts buffer)
+
+(define (ui-start-later! [i (ptr ui-instance)] [run (fn ((ptr void)))])
+  (let ([s ui-start])
+    (set! (-> s instance) i)
+    (set! (-> s run) run)
+    (buffer-add! (& starts) (slice (cast (ptr u8) (& s)) (sizeof ui-start)))))
+
+(define (forget-start! [i (ptr ui-instance)])
+  (let ([p (cast (ptr ui-start) (-> starts bytes))] [n (/ (-> starts length) (sizeof ui-start))])
+    (for ([k u32 0]) (< k n) (+= k 1) (when (== (-> (+ p k) instance) i) (set! (-> (+ p k) instance) 0)))))
+
+;; ui-started! runs the #:start of each instance mounted since the last drawing, once its patches are sent, and then
+;; draws what the starts changed.
+(define (ui-started!)
+  (let ([n (/ (-> starts length) (sizeof ui-start))])
+    (when (> n 0)
+      (for ([k u32 0]) (< k n) (+= k 1)
+        (let ([s (+ (cast (ptr ui-start) (-> starts bytes)) k)])
+          (unless (== (-> s instance) 0) ((-> s run) (cast (ptr void) (-> s instance))))))
+      (set! (-> starts length) 0)
+      (ui-render!))))
+
+;; ---- run-time support: rendering ----
+
+;; While rendering, render-page (web-ui.sub) has the views write HTML: their templates' HTML, each piece between
+;; <!--[--> and <!--]-->, and each text between <!--t--> and <!---->. Each render adds a view's stylesheet once.
+(define rendering bool #f)
+(define renders u32 0)
+(define render-styles buffer)
+(define render-title buffer)
+(define render-titled bool #f)
+
+(define (ui-render-begin!)
+  (set! rendering #t)
+  (+= renders 1)
+  (set! (-> render-styles length) 0)
+  (set! (-> render-title length) 0)
+  (set! render-titled #f))
+
+(define (ui-render-end!) (set! rendering #f))
+
+(define (ui-render-styles) -> string (buffer-string (& render-styles)))
+
+(define (ui-render-titled?) -> bool render-titled)
+
+(define (ui-render-title) -> string (buffer-string (& render-title)))
+
+(define (escaped! [out (ptr buffer)] [s string] [attribute bool])
+  (for ([i u32 0]) (< i (-> s length)) (+= i 1)
+    (let ([c (@ s i)])
+      (cond [(== c #\&) (buffer-add-string! out "&amp;")]
+            [(== c #\<) (buffer-add-string! out "&lt;")]
+            [(== c #\>) (buffer-add-string! out "&gt;")]
+            [(and attribute (== c #\")) (buffer-add-string! out "&quot;")]
+            [else (buffer-add-byte! out (cast i32 c))]))))
+
+(define (digits! [out (ptr buffer)] [n i64])
+  (let ([d (array u8 24)] [i u32 24] [u u64 (if (< n 0) (- 0 n) n)])
+    (while #t
+      (-= i 1)
+      (set! (@ d i) (cast u8 (+ #\0 (cast i32 (% u 10)))))
+      (set! u (/ u 10))
+      (when (== u 0) (break)))
+    (when (< n 0) (buffer-add-byte! out #\-))
+    (buffer-add! out (slice (slice d) i 24))))
+
+(define (named! [out (ptr buffer)] [name string])
+  (buffer-add-byte! out #\space)
+  (buffer-add-string! out name)
+  (buffer-add-string! out "=\""))
+
+(define (ui-render-raw! [out (ptr buffer)] [s string]) (buffer-add-string! out s))
+
+(define (ui-render-open! [out (ptr buffer)]) (buffer-add-string! out "<!--[-->"))
+
+(define (ui-render-close! [out (ptr buffer)]) (buffer-add-string! out "<!--]-->"))
+
+(define (ui-render-text! [out (ptr buffer)] [s string])
+  (buffer-add-string! out "<!--t-->")
+  (escaped! out s #f)
+  (buffer-add-string! out "<!---->"))
+
+(define (ui-render-int! [out (ptr buffer)] [n i64])
+  (buffer-add-string! out "<!--t-->")
+  (digits! out n)
+  (buffer-add-string! out "<!---->"))
+
+(define (ui-render-attr! [out (ptr buffer)] [name string] [value string])
+  (named! out name)
+  (escaped! out value #t)
+  (buffer-add-byte! out #\"))
+
+(define (ui-render-truth! [out (ptr buffer)] [name string] [on bool])
+  (when on
+    (buffer-add-byte! out #\space)
+    (buffer-add-string! out name)))
+
+(define (ui-render-number! [out (ptr buffer)] [name string] [n i64])
+  (named! out name)
+  (digits! out n)
+  (buffer-add-byte! out #\"))
+
+(define (ui-render-decimal! [out (ptr buffer)] [name string] [x f64])
+  (named! out name)
+  (let ([before (output-to! out)])
+    (printf "~a" x)
+    (output-to! before))
+  (buffer-add-byte! out #\"))
+
+(define (ui-render-content! [out (ptr buffer)] [s string]) (escaped! out s #f))
+
+(define (ui-render-title! [s string])
+  (set! (-> render-title length) 0)
+  (buffer-add-string! (& render-title) s)
+  (set! render-titled #t))
+
+(define (ui-render-style! [at (ptr u32)] [css string])
+  (unless (== (@ at) renders)
+    (set! (@ at) renders)
+    (buffer-add-string! (& render-styles) css)
+    (buffer-add-byte! (& render-styles) #\newline)))
+
 ;; ---- run-time support: each ----
 
 (struct ui-row [key u64] [state (ptr void)])
@@ -580,8 +731,11 @@
   (require-unqualified std/meta/type-info)
   (require-unqualified std/html)
 
+  ;; A block's render code writes its template's HTML, with each changing part filled in: sent is how much of the
+  ;; template the code has written so far, and attributes and content hold the current element's changing attributes and
+  ;; text, which the code writes when the element's start tag is done.
   (struct block [html buffer] [nodes u32] [fields datum] [mount datum] [update datum] [unmount datum]
-          [state datum] [template datum] [unmounter datum])
+          [state datum] [template datum] [unmounter datum] [render datum] [sent u32] [attributes datum] [content datum])
 
   (define view-name datum 0)
   (define message-type datum 0)
@@ -612,6 +766,10 @@
       (set! (-> b mount) nil)
       (set! (-> b update) nil)
       (set! (-> b unmount) nil)
+      (set! (-> b render) nil)
+      (set! (-> b sent) 0)
+      (set! (-> b attributes) nil)
+      (set! (-> b content) 0)
       (set! (-> b state) (named (if top '"state" (format "block~a" `(,(make-integer n))))))
       (set! (-> b template) (named (format "template~a" `(,(make-integer n)))))
       (set! (-> b unmounter) (named (if top '"unmount" (format "unmount~a" `(,(make-integer n))))))
@@ -635,6 +793,21 @@
   (define (update! [b (ptr block)] [code datum]) (set! (-> b update) (cons code (-> b update))))
   (define (unmount! [b (ptr block)] [code datum]) (set! (-> b unmount) (cons code (-> b unmount))))
   (define (both! [b (ptr block)] [code datum]) (mount! b code) (update! b code))
+  (define (render! [b (ptr block)] [code datum]) (set! (-> b render) (cons code (-> b render))))
+  (define (attribute-render! [b (ptr block)] [code datum]) (set! (-> b attributes) (cons code (-> b attributes))))
+
+  ;; chunk! adds the template's HTML written since the last chunk to the block's render code.
+  (define (chunk! [b (ptr block)])
+    (let ([h (html-of b)])
+      (when (> (-> h length) (-> b sent))
+        (render! b #`(ui-render-raw! out #,(literal (string->datum (slice (buffer-string h) (-> b sent) (-> h length))))))
+        (set! (-> b sent) (-> h length)))))
+
+  (define (skip! [b (ptr block)]) (set! (-> b sent) (-> (html-of b) length)))
+
+  (define (piece-code [b (ptr block)]) -> datum
+    (chunk! b)
+    #`(begin (ui-render-open! out) #,@(reverse (-> b render)) (ui-render-close! out)))
 
   (define (statements [code datum]) -> datum (if (null? code) `(,#'(begin)) (reverse code)))
 
@@ -750,7 +923,10 @@
 
   (define (text! [b (ptr block)] [f datum] [l datum])
     (unless (== (length l) 2) (fail f '"expected (text e)"))
+    (chunk! b)
     (html-comment! (html-of b) "t")
+    (skip! b)
+    (render! b #`(ui-render-text! out #,(cadr l)))
     (let ([node (node! b)] [slot (field! b #'string)])
       (mount! b #`(ui-text-set! (& (-> bs #,slot)) #,node #,(cadr l)))
       (update! b #`(ui-text-slot! (& (-> bs #,slot)) #,node #,(cadr l)))
@@ -758,14 +934,18 @@
 
   (define (int! [b (ptr block)] [f datum] [l datum])
     (unless (== (length l) 2) (fail f '"expected (int e)"))
+    (chunk! b)
     (html-comment! (html-of b) "t")
+    (skip! b)
+    (render! b #`(ui-render-int! out #,(cadr l)))
     (let ([node (node! b)] [slot (field! b #'i64)])
       (mount! b #`(ui-int-set! (& (-> bs #,slot)) #,node #,(cadr l)))
       (update! b #`(ui-int-slot! (& (-> bs #,slot)) #,node #,(cadr l)))))
 
   (define (title! [b (ptr block)] [f datum] [l datum])
     (unless (== (length l) 2) (fail f '"expected (title e), the document's title while this is shown"))
-    (both! b #`(ui-title! #,(cadr l))))
+    (both! b #`(ui-title! #,(cadr l)))
+    (render! b #`(ui-render-title! #,(cadr l))))
 
   (define (attribute-given? [attributes datum] [name datum]) -> bool
     (for/each ([a attributes])
@@ -803,6 +983,8 @@
            [node datum 0])
       (rooted! (if (== tag 'svg) 'any space))
       (html-open! (html-of b) (symbol->string tag))
+      (set! (-> b attributes) nil)
+      (set! (-> b content) 0)
       (for/each ([a attributes])
         (let ([al (syntax->list a)])
           (unless (and (!= al 0) (pair? al) (or (identifier? (car al)) (string? (syntax-e (car al)))))
@@ -811,7 +993,12 @@
       (when (and (or (== tag 'a) (== tag 'area)) (attribute-given? attributes 'href))
         (mount! b #`(ui-link-listen! #,(marked! b (& node)))))
       (when (== tag 'form) (mount! b #`(ui-form-listen! #,(marked! b (& node)))))
+      (chunk! b)
+      (for-each (lambda ([code datum]) (render! b code)) (reverse (-> b attributes)))
       (html-opened! (html-of b))
+      (unless (== (-> b content) 0)
+        (chunk! b)
+        (render! b (-> b content)))
       (if (and (== space 'html) (void-element? (symbol->string tag)))
           (unless (null? children) (fail f (format "the element ~a cannot have children" `(,tag))))
           (let ([outer context])
@@ -869,10 +1056,13 @@
     (let ([v (cadr al)])
       (if (and (string? (syntax-e v)) (not (and (== name 'value) (or (== tag 'textarea) (== tag 'select)))))
           (attribute-html! b name (syntax-e v))
-          (let ([slot (field! b #'string)] [at (marked! b node)])
-            (mount! b #`(ui-attr-set! (& (-> bs #,slot)) #,at #,(literal (string->datum (symbol->string name))) #,v))
-            (update! b #`(ui-attr-slot! (& (-> bs #,slot)) #,at #,(literal (string->datum (symbol->string name))) #,v))
-            (unmount! b #`(free (-> bs #,slot bytes)))))))
+          (let ([slot (field! b #'string)] [at (marked! b node)] [text (literal (string->datum (symbol->string name)))])
+            (mount! b #`(ui-attr-set! (& (-> bs #,slot)) #,at #,text #,v))
+            (update! b #`(ui-attr-slot! (& (-> bs #,slot)) #,at #,text #,v))
+            (unmount! b #`(free (-> bs #,slot bytes)))
+            (cond [(and (== name 'value) (== tag 'textarea)) (set! (-> b content) #`(ui-render-content! out #,v))]
+                  [(and (== name 'value) (== tag 'select)) (begin)]
+                  [else (attribute-render! b #`(ui-render-attr! out #,text #,v))])))))
 
   (define (truth-attribute! [b (ptr block)] [a datum] [al datum] [name datum] [node (ptr datum)])
     (cond [(== (length al) 1) (attribute-html! b name 0)]
@@ -881,7 +1071,8 @@
           [else
            (let ([slot (field! b #'bool)] [at (marked! b node)] [text (literal (string->datum (symbol->string name)))])
              (mount! b #`(ui-truth-set! (& (-> bs #,slot)) #,at #,text #,(cadr al)))
-             (update! b #`(ui-truth-slot! (& (-> bs #,slot)) #,at #,text #,(cadr al))))]))
+             (update! b #`(ui-truth-slot! (& (-> bs #,slot)) #,at #,text #,(cadr al)))
+             (attribute-render! b #`(ui-render-truth! out #,text #,(cadr al))))]))
 
   (define (number-attribute! [b (ptr block)] [a datum] [al datum] [name datum] [node (ptr datum)])
     (unless (== (length al) 2) (fail a (format "expected [~a n], where n is an integer" `(,name))))
@@ -891,7 +1082,8 @@
             [else
              (let ([slot (field! b #'i64)] [at (marked! b node)] [text (literal (string->datum (symbol->string name)))])
                (mount! b #`(ui-number-set! (& (-> bs #,slot)) #,at #,text #,v))
-               (update! b #`(ui-number-slot! (& (-> bs #,slot)) #,at #,text #,v)))])))
+               (update! b #`(ui-number-slot! (& (-> bs #,slot)) #,at #,text #,v))
+               (attribute-render! b #`(ui-render-number! out #,text #,v)))])))
 
   (define (svg-attribute! [b (ptr block)] [a datum] [al datum] [name datum] [node (ptr datum)])
     (unless (== (length al) 2) (fail a (format "expected [~a e], where e is a string or a number" `(,name))))
@@ -901,7 +1093,8 @@
           (let ([slot (field! b #'string)] [at (marked! b node)] [text (literal (string->datum (symbol->string name)))])
             (mount! b #`(ui-svg-attr! #t (& (-> bs #,slot)) #,at #,text #,v))
             (update! b #`(ui-svg-attr! #f (& (-> bs #,slot)) #,at #,text #,v))
-            (unmount! b #`(free (-> bs #,slot bytes)))))))
+            (unmount! b #`(free (-> bs #,slot bytes)))
+            (attribute-render! b #`(ui-render-svg! out #,text #,v))))))
 
   (define (draw! [b (ptr block)] [tag datum] [a datum] [al datum] [node (ptr datum)])
     (unless (== tag 'canvas) (fail (car al) '"draw can only be used on a canvas element"))
@@ -1005,6 +1198,7 @@
     (branches! b (cadr l) (cddr l) 0))
 
   (define (branches! [b (ptr block)] [c datum] [then datum] [other datum])
+    (chunk! b)
     (html-comment! (html-of b) "a")
     (let* ([anchor (node! b)] [which (field! b #'i32)] [state (field! b #'(ptr void))]
            [one (new-block #f)] [two (ptr block) (if (== other 0) 0 (new-block #f))])
@@ -1037,6 +1231,7 @@
                                         (let ([bs (cast (ptr #,(-> two state)) (-> bs #,state))] [parent 0] [before #,anchor])
                                           #,@(mount-code two))]))
                            [else (set! (-> bs #,state) 0)])))))
+      (render! b #`(if #,c #,(piece-code one) #,(if (== two 0) #'(begin) (piece-code two))))
       (unmount! b (branches-unmount one two which state #'#f))))
 
   (define (branches-unmount [one (ptr block)] [two (ptr block)] [which datum] [state datum] [detach datum]) -> datum
@@ -1046,9 +1241,10 @@
           #,@(if (== two 0) nil `(,#`[(2) (#,(-> two unmounter) (cast (ptr #,(-> two state)) (-> bs #,state)) #,detach)])))
         (free (-> bs #,state))))
 
-  ;; A clause of match, compiled: (pattern number state unmounter update mount).
+  ;; A clause of match, compiled: (pattern number state unmounter update mount render).
   (define (match! [b (ptr block)] [f datum] [l datum])
     (unless (>= (length l) 3) (fail f '"expected (match e [pattern child ...] ...)"))
+    (chunk! b)
     (html-comment! (html-of b) "a")
     (let ([anchor (node! b)] [which (field! b #'i32)] [state (field! b #'(ptr void))] [clauses nil] [k u32 0])
       (for/each ([c (cddr l)])
@@ -1058,7 +1254,7 @@
           (compile-children! one (cdr cl))
           (finish! one)
           (set! clauses (cons `(,(car cl) ,(number k) ,(-> one state) ,(-> one unmounter) ,(statements (-> one update))
-                                ,(mount-code one))
+                                ,(mount-code one) ,(piece-code one))
                               clauses))))
       (set! clauses (reverse clauses))
       (mount! b #`(set! (-> bs #,which) 0))
@@ -1074,6 +1270,7 @@
                                  (set! (-> bs #,state) (malloc (sizeof #,(caddr c))))
                                  (let ([bs (cast (ptr #,(caddr c)) (-> bs #,state))] [parent 0] [before #,anchor])
                                    #,@(list-ref c 5))))])))
+      (render! b #`(match #,(cadr l) #,@(for/list ([c clauses]) #`[#,(car c) #,(list-ref c 6)])))
       (unmount! b (clauses-unmount clauses which state #'#f))))
 
   (define (clauses-unmount [clauses datum] [which datum] [state datum] [detach datum]) -> datum
@@ -1089,18 +1286,20 @@
         (fail f '"expected (each [x items n] #:key k child ...)"))
       (when in-rows
         (fail f '"an each cannot be written directly inside another each: move the inner each into a view of its own, and use that view here"))
+      (chunk! b)
       (html-comment! (html-of b) "a")
       (let* ([anchor (node! b)] [rows (field! b #'ui-rows)] [x (car binding)] [key (cadddr l)]
              [children (cddddr l)] [only (if (null? (cdr children)) (syntax->list (car children)) 0)]
              [v (if (and (!= only 0) (pair? only) (identifier? (car only))) (view-of (car only)) 0)]
-             [state datum 0] [mount datum 0] [update datum 0] [unmount datum 0])
+             [state datum 0] [mount datum 0] [update datum 0] [unmount datum 0] [row-render datum 0])
         (if (!= v 0)
             (let ([names (view-names v)])
               (check-arguments! (car children) v (cdr only))
               (set! state (car names))
               (set! mount #`(#,(cadr names) bs parent before #,@(cdr only)))
               (set! update #`(#,(caddr names) bs #,@(cdr only)))
-              (set! unmount (cadddr names)))
+              (set! unmount (cadddr names))
+              (set! row-render #`(#,(list-ref names 4) out #,@(cdr only))))
             (let ([row (new-block #f)])
               (set! in-rows #t)
               (compile-children! row children)
@@ -1109,7 +1308,10 @@
               (set! state (-> row state))
               (set! mount #`(begin #,@(mount-code row)))
               (set! update #`(begin #,@(statements (-> row update))))
-              (set! unmount (-> row unmounter))))
+              (set! unmount (-> row unmounter))
+              (set! row-render (piece-code row))))
+        (render! b #`(let ([items #,(cadr binding)] [count u32 #,(caddr binding)])
+                       (for ([i u32 0]) (< i count) (+= i 1) (let ([#,x (+ items i)]) #,row-render))))
         (mount! b #`(set! (-> bs #,rows items) 0))
         (mount! b #`(set! (-> bs #,rows count) 0))
         (both! b #`(let ([items #,(cadr binding)] [anchor #,anchor] [rows (& (-> bs #,rows))])
@@ -1133,6 +1335,8 @@
   (define (call! [b (ptr block)] [f datum] [l datum] [v datum])
     (check-arguments! f v (cdr l))
     (placed! f 'view (view-kind v))
+    (chunk! b)
+    (render! b #`(#,(list-ref (view-names v) 4) out #,@(cdr l)))
     (let ([sent (view-messages v)])
       (unless (or (== sent 0) (and (!= message-type 0) (same-type? sent message-type)))
         (fail f (format "the view ~a sends messages of the type ~a, but ~a"
@@ -1228,6 +1432,8 @@
     (placed! f 'component (component-kind c))
     (let* ([key (key-of l)] [names (syntax->list (cadr c))] [parsed (component-attributes f (without-key l) c)]
            [values (car parsed)] [listeners (cdr parsed)] [n (length listeners)])
+      (chunk! b)
+      (render! b #`(#,(list-ref names 4) out #,@values))
       (html-comment! (html-of b) "a")
       (let* ([anchor (node! b)] [instance (field! b (car names))]
              [heard datum (if (== n 0) 0 (field! b #`(array ui-parent-listener #,(number n))))]
@@ -1298,21 +1504,26 @@
          (set! context 'any)
          (set! html-roots #f)
          (set! svg-roots #f)
-         (let ([b (new-block #t)] [style (option-of options '#:style)] [styled (named '"styled")])
+         (let ([b (new-block #t)] [style (option-of options '#:style)] [styled (named '"styled")]
+               [rendered (named '"rendered")])
            (compile-children! b children)
            (when (and html-roots svg-roots) (fail s '"this view starts with both HTML and SVG elements"))
            (finish! b)
            #`(begin
                #,@(reverse definitions)
-               #,@(if (== style 0) nil `(,#`(define #,styled bool #f)))
+               #,@(if (== style 0) nil `(,#`(define #,styled bool #f) ,#`(define #,rendered u32 0)))
                (define (#,(named '"mount") [bs (ptr #,(-> b state))] [parent u32] [before u32] #,@parameter)
                  #,@(if (== style 0) nil `(,#`(unless #,styled (set! #,styled #t) (dom-stylesheet! #,style))))
                  #,@(mount-code b))
                (define (#,(named '"update") [bs (ptr #,(-> b state))] #,@parameter)
                  #,@(statements (-> b update)))
+               (define (#,(named '"render") [out (ptr buffer)] #,@parameter)
+                 #,@(if (== style 0) nil `(,#`(ui-render-style! (& #,rendered) #,style)))
+                 #,(piece-code b))
                #,@(reverse fills)
                (define-syntax #,v
-                 (view-value (quote-syntax ((#,(-> b state) #,(named '"mount") #,(named '"update") #,(-> b unmounter))
+                 (view-value (quote-syntax ((#,(-> b state) #,(named '"mount") #,(named '"update") #,(-> b unmounter)
+                                             #,(named '"render"))
                                             (#,@parameter)
                                             #,(if listening message-type #'#f)
                                             #,(literal (cond [svg-roots 'svg] [html-roots 'html] [else 'any])))))))))]))
@@ -1344,30 +1555,34 @@
       (cdr (cadr found))))
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and #:leaving [held? case].
-  ;; Its instances each have a state, which the children see as s. #:init runs when an instance is mounted. #:changed
-  ;; runs before a drawing whose parameters differ, bit for bit, from those of the drawing before. Both take the state
-  ;; and the parameters. The stylesheet is added to the document when the first instance is mounted. #:route names a
-  ;; message case that holds a route. The instance gets that message with the route when it is mounted and after each
-  ;; navigation. While (held? state) is true, the router stops navigations. #:leaving names a case that holds a string,
-  ;; and the instance gets it with the URL of each navigation the router stops.
+  ;; #:init f, #:start f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and
+  ;; #:leaving [held? case]. Its instances each have a state, which the children see as s. #:init runs when an instance
+  ;; is mounted, and when it is rendered. #:start runs only in the browser, after the instance's first drawing reaches
+  ;; the document. #:changed runs before a drawing whose parameters differ, bit for bit, from those of the drawing
+  ;; before. All three take the state and the parameters. #:free runs when an instance is unmounted, and after it is
+  ;; rendered. The stylesheet is added to the document when the first instance is mounted. #:route names a message case
+  ;; that holds a route. #:init then takes the route the instance starts at, after the parameters, and the instance gets
+  ;; that message with the route after each navigation. While (held? state) is true, the router stops navigations.
+  ;; #:leaving names a case that holds a string, and the instance gets it with the URL of each navigation the router
+  ;; stops.
   (define (component-form [s datum]) -> datum
     (syntax-match s
       [(_ ((? identifier? name) parameter ...) rest ...)
        (let ([options nil] [children rest])
          (while (and (pair? children) (keyword? (syntax-e (car children))))
            (let ([word (syntax-e (car children))])
-             (unless (!= (memq word '(#:state #:messages #:update #:init #:changed #:free #:events #:trapped #:style
-                                      #:route #:leaving))
+             (unless (!= (memq word '(#:state #:messages #:update #:init #:start #:changed #:free #:events #:trapped
+                                      #:style #:route #:leaving))
                          0)
-               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:changed, #:free, #:events, #:trapped, #:style, #:route and #:leaving" (car children)))
+               (raise-syntax-error 'component "the options are #:state, #:messages, #:update, #:init, #:start, #:changed, #:free, #:events, #:trapped, #:style, #:route and #:leaving" (car children)))
              (unless (pair? (cdr children)) (raise-syntax-error 'component "expected a value after the option" (car children)))
              (unless (== (assq word options) 0) (raise-syntax-error 'component "this option is given twice" (car children)))
              (set! options (cons (cons word (cadr children)) options))
              (set! children (cddr children))))
          (let* ([state (option-of options '#:state)] [state-l (if (== state 0) 0 (syntax->list state))]
                 [messages (option-of options '#:messages)] [update (option-of options '#:update)]
-                [init (option-of options '#:init)] [changed (option-of options '#:changed)] [free (option-of options '#:free)]
+                [init (option-of options '#:init)] [start (option-of options '#:start)]
+                [changed (option-of options '#:changed)] [free (option-of options '#:free)]
                 [events (option-of options '#:events)] [trapped (option-of options '#:trapped)]
                 [style (option-of options '#:style)] [route (option-of options '#:route)]
                 [leaving (option-of options '#:leaving)] [leaving-l (if (== leaving 0) 0 (syntax->list leaving))])
@@ -1389,12 +1604,20 @@
                   [adapter (component-name name '"message")] [trap (component-name name '"trap")]
                   [names (for/list ([p parameter]) (car (syntax->list p)))]
                   [types (for/list ([p parameter]) (cadr (syntax->list p)))]
-                  [lasts (if (== changed 0) nil (for/list ([n names]) (component-name n '"last")))]
+                  [lasts (if (and (== changed 0) (== start 0)) nil (for/list ([n names]) (component-name n '"last")))]
                   [route-type (if (== route 0) 0 (message-case messages route '#:route))]
                   [route-fn (component-name name '"route")] [held? (component-name name '"held?")]
-                  [held (component-name name '"held")])
+                  [held (component-name name '"held")] [render-fn (component-name name '"render")]
+                  [start-fn (component-name name '"start")]
+                  [route-start (if (== route 0) nil `(,#`(@ (cast (ptr #,route-type) (ui-route-now)))))]
+                  [starting (if (== init 0)
+                                nil
+                                `(,@(if (== route 0) nil `(,#`(ui-route-check! #,(type-text route-type))))
+                                  ,#`(#,init (& (-> i state)) #,@names #,@route-start)))])
              (unless (or (== route 0) (identifier? route-type))
                (raise-syntax-error 'component "#:route's case must hold a route, a value of a routable type" route))
+             (when (and (!= route 0) (== init 0))
+               (raise-syntax-error 'component "#:route needs #:init, which takes the route the instance starts at" route))
              (unless (or (== leaving 0) (== (message-case messages (cadr leaving-l) '#:leaving) 'string))
                (raise-syntax-error 'component "#:leaving's case must hold a string, the URL that the user went for"
                                    (cadr leaving-l)))
@@ -1431,13 +1654,32 @@
                    (memset (& (-> i state)) 0 (sizeof #,t))
                    #,@(for/list ([l lasts] [n names]) #`(set! (-> i #,l) #,n))
                    (let ([outer (ui-enter! (& (-> i head)))])
-                     #,@(if (== init 0) nil `(,#`(#,init (& (-> i state)) #,@names)))
+                     #,@starting
                      #,@(if (== route 0)
                             nil
                             `(,#`(ui-route-listen! (& (-> i head)) #,route-fn #,(type-text route-type))))
                      #,@(if (== leaving 0) nil `(,#`(ui-guard! (& (-> i head)) #,held? #,held)))
                      (#,(component-name view '"mount") (& (-> i view)) parent before (& (-> i state)) #,@names)
+                     #,@(if (== start 0) nil `(,#`(ui-start-later! (& (-> i head)) #,start-fn)))
                      (ui-leave! outer)))
+                 #,@(if (== start 0)
+                        nil
+                        `(,#`(define (#,start-fn [p (ptr void)])
+                               (let* ([i (cast (ptr #,instance) p)] [outer (ui-enter! (& (-> i head)))])
+                                 (#,start (& (-> i state)) #,@(for/list ([l lasts]) #`(-> i #,l)))
+                                 (ui-leave! outer)))))
+                 (define (#,render-fn [out (ptr buffer)] #,@parameter)
+                   (let ([i (cast (ptr #,instance) (malloc (sizeof #,instance)))])
+                     (memset (cast (ptr void) i) 0 (sizeof #,instance))
+                     (ui-instance-start! (& (-> i head)) (cast (ptr void) (& (-> i state))) 0 0 #,(type-text messages)
+                                         #,(type-text events) 0 0)
+                     (let ([outer (ui-enter! (& (-> i head)))])
+                       #,@starting
+                       (#,(component-name view '"render") out (& (-> i state)) #,@names)
+                       #,@(if (== free 0) nil `(,#`(#,free (& (-> i state)))))
+                       (ui-instance-end! (& (-> i head)))
+                       (ui-leave! outer))
+                     (free i)))
                  (define (#,update-fn [i (ptr #,instance)] #,@parameter)
                    (let ([outer (ui-enter! (& (-> i head)))])
                      #,@(if (== changed 0)
@@ -1460,7 +1702,7 @@
                      (ui-instance-end! (& (-> i head)))
                      (ui-leave! outer)))
                  (define-syntax #,name
-                   (component-value (quote-syntax ((#,instance #,mount #,update-fn #,unmount) (#,@parameter)
+                   (component-value (quote-syntax ((#,instance #,mount #,update-fn #,unmount #,render-fn) (#,@parameter)
                                                    #,(if (== events 0) #'#f events)
                                                    #,(if (== messages 0) #'#f messages)
                                                    #,view))))))))]))
@@ -1520,6 +1762,32 @@
                         (ui-root! render))))]))]
       [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...))) or (ui-root mount node (v e ...))" s)]))
 
+  ;; (ui-render-root out (c ([parameter value] ...))) writes the HTML of an instance of c to the buffer out, and
+  ;; (ui-render-root out (v e ...)) that of a view.
+  (define (render-root-form [s datum]) -> datum
+    (syntax-match s
+      [(_ out call)
+       (let* ([l (syntax->list call)] [head (if (and (!= l 0) (pair? l) (identifier? (car l))) (car l) 0)]
+              [v (if (== head 0) 0 (view-of head))] [c (if (or (== head 0) (!= v 0)) 0 (component-of head))])
+         (cond [(!= v 0)
+                (check-arguments! call v (cdr l))
+                #`(#,(list-ref (view-names v) 4) #,out #,@(cdr l))]
+               [(== c 0) (raise-syntax-error 'render-page "expected a component, (c ([parameter value] ...)), or a view, (v e ...)" call)]
+               [else (let ([parsed (component-attributes call l c)])
+                       #`(#,(list-ref (syntax->list (cadr c)) 4) #,out #,@(car parsed)))]))]))
+
+  (define (svg-render-form [s datum]) -> datum
+    (syntax-match s [(_ out name e) #`(let ([v #,e]) (ui-render-svg-typed! #,out #,name v #,e))]))
+
+  (define (svg-render-typed-form [s datum]) -> datum
+    (syntax-match s
+      [(_ out name v e)
+       (let ([t (variable-type v)])
+         (cond [(== t 'string) #`(ui-render-attr! #,out #,name #,v)]
+               [(!= (memq t '(i8 u8 i16 u16 i32 u32 i64 u64)) 0) #`(ui-render-number! #,out #,name (cast i64 #,v))]
+               [(!= (memq t '(f32 f64)) 0) #`(ui-render-decimal! #,out #,name (cast f64 #,v))]
+               [else (raise-syntax-error 'view "an SVG attribute's value is a string or a number" e)]))]))
+
   (define (svg-attr-form [s datum]) -> datum
     (syntax-match s
       [(_ first slot node name e) #`(let ([v #,e]) (ui-svg-typed! #,first #,slot #,node #,name v #,e))]))
@@ -1548,3 +1816,6 @@
 (define-syntax ui-root root-form)
 (define-syntax ui-svg-attr! svg-attr-form)
 (define-syntax ui-svg-typed! svg-typed-form)
+(define-syntax ui-render-root render-root-form)
+(define-syntax ui-render-svg! svg-render-form)
+(define-syntax ui-render-svg-typed! svg-render-typed-form)

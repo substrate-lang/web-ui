@@ -1,0 +1,58 @@
+;; The test app's server, with its pages rendered: a path that the app's routes read gets the app's page with the app
+;; rendered into it (render-page). Under /frozen/, such a page comes without its program, so the browser shows only what
+;; was rendered, and a script in its place tells the tests that the page is ready. Other paths get the site's files.
+(require-unqualified host/fs)
+(require-unqualified std/http)
+(require-unqualified std/http/server)
+(require-unqualified std/http/static)
+(require-unqualified std/http/routable)
+(require-unqualified std/package/path)
+(require-unqualified std/string)
+(require-unqualified web-ui)
+(require-unqualified "../places.sub")
+(require routed "../routed.sub")
+
+(provide main)
+
+(define server http-server)
+(define files http-files)
+
+(define script string "<script type=\"module\" src=\"host/web/start.mjs\"></script>")
+
+(define (rendered! [r (ptr http-request)] [path string] [frozen bool])
+  (let ([page (slice u8)] [out (make-buffer)] [why error])
+    (unless (fs-read-file (joined-path (-> files root) "index.html") (& page) (& why))
+      (http-answer-text! r 500 (error-text (& why)))
+      (return))
+    (render-page (& out) (cast string page) #:routes place #:url (string-append 0 "http://localhost" path)
+                 ["root" (routed:app)])
+    (let ([html (buffer-string (& out))])
+      (when frozen
+        (let ([at (string-find html script)])
+          (set! html (string-append 0 (slice html 0 at) "<script>window.ready = true</script>"
+                                    (slice html (+ at (-> script length)) (-> html length))))))
+      (http-respond! r 200)
+      (http-header! r "content-type" "text/html; charset=utf-8")
+      (http-send-text! r html))
+    (buffer-free! (& out))
+    (free (-> page items))))
+
+(define (handle [r (ptr http-request)])
+  (let* ([target (-> r target)] [frozen (string-prefix? target "/frozen/")]
+         [path (if frozen (slice target 7 (-> target length)) target)])
+    (if (== (place.url-check (& (-> r arena)) path "" 0) url-found)
+        (rendered! r path frozen)
+        (http-static! r (& files)))))
+
+(define (listening [s (ptr http-server)])
+  (let ([line (make-buffer)])
+    (buffer-add-string! (& line) "http://127.0.0.1:")
+    (http-add-decimal! (& line) (cast i64 (-> s port)))
+    (buffer-add-string! (& line) "/\n")
+    (host-write 1 (buffer-bytes (& line)))))
+
+(define (main)
+  (set! (-> files root) (@ (host-args) 0))
+  (set! (-> server listening) listening)
+  (let ([why error])
+    (unless (http-serve! (& server) 0 handle (& why)) (host-exit 1 (error-text (& why))))))

@@ -1,0 +1,32 @@
+;; Components with #:start: one drawn at first, and one drawn after a click.
+(require-unqualified web-ui)
+(require-unqualified std/string)
+
+(struct greeting-state [text string])
+
+(define (greeting-init [s (ptr greeting-state)] [name string]) (set! (-> s text) (string-append 0 "hello " name)))
+
+(define (greeting-start [s (ptr greeting-state)] [name string])
+  (set! (-> s text) (string-append 0 (-> s text) ", started")))
+
+(component (greeting [name string])
+  #:state [s greeting-state]
+  #:init greeting-init
+  #:start greeting-start
+  (p ([class "greeting"]) (text (-> s text))))
+
+(struct page-state [more bool])
+
+(variant page-message [shown])
+
+(define (page-update [s (ptr page-state)] [m (ptr page-message)]) (set! (-> s more) #t))
+
+(component (page)
+  #:state [s page-state]
+  #:messages page-message
+  #:update page-update
+  (div (greeting ([name "first"]))
+       (button ([on click shown]) "Show")
+       (when (-> s more) (greeting ([name "second"])))))
+
+(attach ["root" (page)])

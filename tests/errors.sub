@@ -27,6 +27,7 @@
 (test err-view-option (expect-compile-error "fail/err-view-option.sub" "err-view-option.sub:4:13: error: view: the options are #:messages TYPE and #:style css"))
 (test err-route-messages (expect-compile-error "fail/err-route-messages.sub" "err-route-messages.sub:8:11: error: component: #:route needs #:messages"))
 (test err-route-case (expect-compile-error "fail/err-route-case.sub" "err-route-case.sub:14:11: error: component: #:route's case must hold a route, a value of a routable type"))
+(test err-route-init (expect-compile-error "fail/err-route-init.sub" "err-route-init.sub:15:11: error: component: #:route needs #:init, which takes the route the instance starts at"))
 (test err-leaving-case (expect-compile-error "fail/err-leaving-case.sub" "err-leaving-case.sub:16:20: error: component: #:leaving's case must hold a string, the URL that the user went for"))
 (test err-attach-routes (expect-compile-error "fail/err-attach-routes.sub" "err-attach-routes.sub:8:18: error: attach: #:routes takes a routable type, and place is not one"))
 (test err-match (expect-compile-error "fail/err-match.sub" "err-match.sub:5:3: error: view: expected (match e [pattern child ...] ...)"))

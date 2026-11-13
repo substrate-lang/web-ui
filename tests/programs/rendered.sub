@@ -1,0 +1,88 @@
+;; Rendering: the HTML that render-page writes for each kind of changing part, a component with #:init, #:start and
+;; #:free, a component that takes routes, and a page's stylesheets and title.
+(require-unqualified web-ui)
+(require-unqualified std/http/routable)
+(require-unqualified "../places.sub")
+(provide main)
+
+(struct item [id u32] [name string] [done bool])
+(struct model [count i32] [title string] [items (array item 3)] [n u32] [ratio f64])
+(variant msg [increment] [toggle [id u32]])
+(messages msg)
+
+(view (row [x (ptr item)])
+  (li ([class (if (-> x done) "done" "")] [on click (toggle (-> x id))])
+    (text (-> x name))
+    (if (-> x done) (b "done") (i "to do"))))
+
+(struct note-state [text string])
+
+(define (note-init [s (ptr note-state)] [given string]) (set! (-> s text) (string-copy given)))
+
+(define (note-start [s (ptr note-state)] [given string]) (printf "started~n"))
+
+(define (note-free [s (ptr note-state)])
+  (printf "freed ~a~n" (-> s text))
+  (free (-> s text bytes)))
+
+(component (note [given string])
+  #:state [s note-state]
+  #:init note-init
+  #:start note-start
+  #:free note-free
+  #:style ".note { color: red }"
+  (aside ([class "note"]) (text (-> s text))))
+
+(view (page [m (ptr model)])
+  #:style ".page { margin: 0 }"
+  (title (-> m title))
+  (h1 (text (-> m title)) " & " (int (cast i64 (-> m count))))
+  (button ([disabled (== (-> m count) 0)] [tabindex (cast i64 (-> m count))] [on click increment]) "+")
+  (ul (each [x (-> m items) (-> m n)] #:key (cast u64 (-> x id)) (row x)))
+  (ol (each [x (-> m items) (-> m n)] #:key (cast u64 (-> x id)) (li (text (-> x name)))))
+  (when (> (-> m count) 1) (p "many"))
+  (textarea ([value (-> m title)]))
+  (note ([given "a <note>"]))
+  (note ([given "another"]))
+  (svg ([width 20] [height 20]) (circle ([r (-> m ratio)] [cx (-> m count)] [cy 5]))))
+
+(struct trip-state [at place])
+
+(variant trip-message [went [to place]])
+
+(define (trip-update [s (ptr trip-state)] [m (ptr trip-message)]) (match m [(went to) (set! (-> s at) to)]))
+
+(define (trip-init [s (ptr trip-state)] [at place]) (set! (-> s at) at))
+
+(component (trip)
+  #:state [s trip-state]
+  #:messages trip-message
+  #:update trip-update
+  #:init trip-init
+  #:route went
+  (nav (a ([href (route-href (user 7))] ["aria-current" (if (route-current? (user 7)) "page" "false")]) "User 7"))
+  (match (-> s at)
+    [home (title "Home") (p "home")]
+    [(user id) (title "User") (p "user " (int (cast i64 id)))]
+    [_ (p "elsewhere")]))
+
+(define the-model model)
+
+(define (item! [i u32] [id u32] [name string] [done bool])
+  (set! (@ (-> the-model items) i) (item #:id id #:name name #:done done)))
+
+(define (main)
+  (let ([b (make-buffer)])
+    (set! (-> the-model count) 2)
+    (set! (-> the-model title) "Rows & \"rows\"")
+    (set! (-> the-model ratio) 2.5)
+    (item! 0 1 "one" #t)
+    (item! 1 2 "two <2>" #f)
+    (set! (-> the-model n) 2)
+    (render-page (& b) "<!doctype html>\n<title>Test</title>\n<div id=\"root\"></div>\n" ["root" (page (& the-model))])
+    (printf "~a--~n" (buffer-string (& b)))
+    (set! (-> b length) 0)
+    (let ([read (render-page (& b)
+                             "<!doctype html>\n<head>\n<title>Trips</title>\n<base href=\"/inner/\">\n</head>\n<div id=\"root\"></div>\n"
+                             #:routes place #:url "https://example.com/inner/users/7/" ["root" (trip)])])
+      (printf "~a--~nread ~a~n" (buffer-string (& b)) read))))
