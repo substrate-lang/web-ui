@@ -6,6 +6,7 @@
 (require-unqualified dom std/web/dom)
 (require-unqualified host/web/location)
 (require-unqualified std/http/url)
+(require-unqualified std/string)
 
 (provide (all-from-out ui) (all-from-out router) (all-from-out events) (all-from-out dom) attach prevent-default!
          stop-propagation!)
@@ -29,8 +30,7 @@
   (ui-title-first! (dom-read-text dom-document "title")))
 
 (define (attach-scroll!)
-  (let ([url (location-href)] [i u32 0] [a (make-arena)])
-    (while (and (< i (-> url length)) (!= (@ url i) #\#)) (+= i 1))
+  (let* ([url (location-href)] [i (string-index url #\#)] [a (make-arena)])
     (when (< (+ i 1) (-> url length))
       (let* ([raw (slice url (+ i 1) (-> url length))] [decoded (url-unescape (& a) raw #f)] [n (dom-element raw)])
         (when (and (== n 0) (!= decoded raw)) (set! n (dom-element decoded)))
