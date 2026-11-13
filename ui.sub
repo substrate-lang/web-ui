@@ -371,7 +371,7 @@
     (set! (-> l next) route-listeners)
     (set! route-listeners l)))
 
-;; The current route, which a component that takes routes gets in its #:init, and render-page sets.
+;; The current route, which a component that takes routes gets in its #:init, and app-render sets.
 (define (ui-route-now) -> (ptr void) route-now)
 
 (define (ui-route-set! [route (ptr void)] [type string])
@@ -528,7 +528,7 @@
 
 ;; ---- run-time support: rendering ----
 
-;; While rendering, render-page (web-ui.sub) has the views write HTML: their templates' HTML, each piece between
+;; While rendering, app-render (web-ui.sub) has the views write HTML: their templates' HTML, each piece between
 ;; <!--[--> and <!--]-->, and each text between <!--t--> and <!---->. Each render adds a view's stylesheet once.
 (define rendering bool #f)
 (define renders u32 0)
@@ -1705,10 +1705,12 @@
                    (component-value (quote-syntax ((#,instance #,mount #,update-fn #,unmount #,render-fn) (#,@parameter)
                                                    #,(if (== events 0) #'#f events)
                                                    #,(if (== messages 0) #'#f messages)
-                                                   #,view))))))))]))
+                                                   #,view
+                                                   #,(if (== route 0) #'#f route-type)))))))))]))
 
   (define (component-value [parts datum]) -> datum
-    (let ([l (syntax->list parts)]) `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l) ,(car (cddddr l)))))
+    (let ([l (syntax->list parts)])
+      `(ui-component ,(car l) ,(cadr l) ,(caddr l) ,(cadddr l) ,(car (cddddr l)) ,(cadr (cddddr l)))))
 
   (define (component-kind [c datum]) -> datum (view-kind (view-of (cadr (cddddr c)))))
 
@@ -1772,7 +1774,7 @@
          (cond [(!= v 0)
                 (check-arguments! call v (cdr l))
                 #`(#,(list-ref (view-names v) 4) #,out #,@(cdr l))]
-               [(== c 0) (raise-syntax-error 'render-page "expected a component, (c ([parameter value] ...)), or a view, (v e ...)" call)]
+               [(== c 0) (raise-syntax-error 'app "expected a component, (c ([parameter value] ...)), or a view, (v e ...)" call)]
                [else (let ([parsed (component-attributes call l c)])
                        #`(#,(list-ref (syntax->list (cadr c)) 4) #,out #,@(car parsed)))]))]))
 

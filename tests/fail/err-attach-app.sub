@@ -1,0 +1,6 @@
+;; Attaching a value that app did not define.
+(require-unqualified web-ui)
+
+(define page-app u32 0)
+
+(attach page-app)

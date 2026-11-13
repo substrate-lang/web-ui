@@ -1,5 +1,5 @@
 ;; The test app's server, with its pages rendered: a path that the app's routes read gets the app's page with the app
-;; rendered into it (render-page). Under /frozen/, such a page comes without its program, so the browser shows only what
+;; rendered into it (app-render). Under /frozen/, such a page comes without its program, so the browser shows only what
 ;; was rendered, and a script in its place tells the tests that the page is ready. Other paths get the site's files.
 (require-unqualified host/fs)
 (require-unqualified std/http)
@@ -24,8 +24,7 @@
     (unless (fs-read-file (joined-path (-> files root) "index.html") (& page) (& why))
       (http-answer-text! r 500 (error-text (& why)))
       (return))
-    (render-page (& out) (cast string page) #:routes place #:url (string-append 0 "http://localhost" path)
-                 ["root" (routed:app)])
+    (app-render (& routed:routed-app) (& out) (cast string page) path "/" 0)
     (let ([html (buffer-string (& out))])
       (when frozen
         (let ([at (string-find html script)])

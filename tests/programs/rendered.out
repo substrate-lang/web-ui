@@ -4,7 +4,7 @@ freed another
 <title data-ui="Test">Rows &amp; "rows"</title>
 <style data-ui>.page { margin: 0 }
 .note { color: red }
-</style><div id="root"><!--[--><h1><!--t-->Rows &amp; "rows"<!----> &amp; <!--t-->2<!----></h1><button data-n tabindex="2">+</button><ul><!--[--><li data-n class="done"><!--t-->one<!----><!--[--><b>done</b><!--]--><!--a--></li><!--]--><!--[--><li data-n class=""><!--t-->two &lt;2&gt;<!----><!--[--><i>to do</i><!--]--><!--a--></li><!--]--><!--a--></ul><ol><!--[--><li><!--t-->one<!----></li><!--]--><!--[--><li><!--t-->two &lt;2&gt;<!----></li><!--]--><!--a--></ol><!--[--><p>many</p><!--]--><!--a--><textarea data-n>Rows &amp; "rows"</textarea><!--[--><aside class="note"><!--t-->a &lt;note&gt;<!----></aside><!--]--><!--a--><!--[--><aside class="note"><!--t-->another<!----></aside><!--]--><!--a--><svg width="20" height="20"><circle data-n cy="5" r="2.5" cx="2"></circle></svg><!--]--></div>
+</style><div id="root"><!--[--><!--[--><h1><!--t-->Rows &amp; "rows"<!----> &amp; <!--t-->2<!----></h1><button data-n tabindex="2">+</button><ul><!--[--><li data-n class="done"><!--t-->one<!----><!--[--><b>done</b><!--]--><!--a--></li><!--]--><!--[--><li data-n class=""><!--t-->two &lt;2&gt;<!----><!--[--><i>to do</i><!--]--><!--a--></li><!--]--><!--a--></ul><ol><!--[--><li><!--t-->one<!----></li><!--]--><!--[--><li><!--t-->two &lt;2&gt;<!----></li><!--]--><!--a--></ol><!--[--><p>many</p><!--]--><!--a--><textarea data-n>Rows &amp; "rows"</textarea><!--[--><aside class="note"><!--t-->a &lt;note&gt;<!----></aside><!--]--><!--a--><!--[--><aside class="note"><!--t-->another<!----></aside><!--]--><!--a--><svg width="20" height="20"><circle data-n cy="5" r="2.5" cx="2"></circle></svg><!--]--><!--a--><!--]--></div>
 --
 <!doctype html>
 <head>
