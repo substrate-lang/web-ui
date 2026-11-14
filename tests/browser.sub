@@ -2,6 +2,7 @@
 (require-unqualified std/test/browser)
 (require-unqualified std/test/test)
 (require server "support/server.sub")
+(require render-server "support/render-server.sub")
 (require-unqualified std/string)
 
 (test counter
@@ -241,3 +242,61 @@
     (expect-text b (by-css "#page") "home")
     (expect-equal (browser-url b) "http://localhost/?full=1")
     (expect-text b (by-css "#mark") "")))
+
+(test started
+  (with-browser (b "started.sub")
+    (expect-text b (by-css ".greeting") "hello first, started")
+    (browser-click! b (by-role "button" "Show"))
+    (expect-count b (by-css ".greeting") 2)
+    (expect-text b (nth (by-css ".greeting") 2) "hello second, started")))
+
+(test rendered-page #:grants ((net "127.0.0.1"))
+  (with-browser (b "routed" #:server render-server:main #:url "users/7/")
+    (expect-text b (by-css "#page") "user 7")
+    (expect-count b (by-css "#page") 1)
+    (expect-text b (by-css "title") "User")
+    (browser-click! b (by-role "button" "Mark"))
+    (expect-text b (by-css "#mark") "marked")
+    (browser-click! b (by-css "#home"))
+    (expect-text b (by-css "#page") "home")
+    (expect-text b (by-css "title") "Home")))
+
+(define (unmarked [s string]) -> string
+  (let ([b (make-buffer)] [i u32 0])
+    (while (< i (-> s length))
+      (cond [(string-prefix? (slice s i (-> s length)) "<!--")
+             (+= i (+ (string-find (slice s i (-> s length)) "-->") 3))]
+            [(string-prefix? (slice s i (-> s length)) " data-n=\"\"") (+= i 10)]
+            [else
+             (buffer-add-byte! (& b) (cast i32 (@ s i)))
+             (+= i 1)]))
+    (buffer-string (& b))))
+
+(test rendered-agrees #:grants ((net "127.0.0.1"))
+  (let ([rendered string ""] [mounted string ""])
+    (with-browser (b "routed" #:server render-server:main #:url "frozen/users/7/")
+      (set! rendered (unmarked (browser-html b (by-css "#root > div:last-of-type")))))
+    (with-browser (b "routed" #:server server:main #:url "users/7/")
+      (set! mounted (unmarked (browser-html b (by-css "#root > div:last-of-type")))))
+    (expect (> (-> rendered length) 0))
+    (expect-equal rendered mounted)))
+
+(test rendered-kept #:grants ((net "127.0.0.1"))
+  (with-browser (b "routed" #:server render-server:marked #:url "users/7/")
+    (expect-text b (by-css "#page") "user 7")
+    (expect (browser-attribute? b (by-css "#page") "data-rendered"))
+    (browser-click! b (by-role "button" "Mark"))
+    (expect-text b (by-css "#mark") "marked")
+    (expect (browser-attribute? b (by-css "#mark") "data-rendered"))
+    (browser-click! b (by-css "#home"))
+    (expect-text b (by-css "#page") "home")
+    (expect (not (browser-attribute? b (by-css "#page") "data-rendered")))
+    (expect (browser-attribute? b (by-css "#mark") "data-rendered"))))
+
+(test rendered-mismatch #:grants ((net "127.0.0.1"))
+  (with-browser (b "routed" #:server render-server:mismatched #:url "users/7/")
+    (expect-text b (by-css "#page") "user 7")
+    (expect-count b (by-css "#page") 1)
+    (expect (not (browser-attribute? b (by-css "#page") "data-rendered")))
+    (browser-click! b (by-role "button" "Mark"))
+    (expect-text b (by-css "#mark") "marked")))

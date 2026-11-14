@@ -1,0 +1,17 @@
+;; A component with #:route but no #:init to take the route it starts at.
+(require-unqualified web-ui/ui)
+(require-unqualified "../places.sub")
+
+(struct page-state [at place])
+
+(variant page-message [went [to place]])
+
+(define (page-update [s (ptr page-state)] [m (ptr page-message)]) 0)
+
+(component (page)
+  #:state [s page-state]
+  #:messages page-message
+  #:update page-update
+  #:route went
+  (p "page"))
+(define (main) 0)

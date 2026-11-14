@@ -1,33 +1,46 @@
-;; The language of web user interfaces: ui.sub's views and components, attach, which puts them in elements of the
-;; document, and router.sub's routes.
+;; The language of web user interfaces: ui.sub's views and components, router.sub's routes, and apps. An app gathers
+;; views and components. attach puts an app in the document, and app-render writes it into a page's HTML.
 (require-unqualified ui "ui.sub")
 (require-unqualified router "router.sub")
 (require-unqualified events host/events)
 (require-unqualified dom std/web/dom)
 (require-unqualified host/web/location)
 (require-unqualified std/http/url)
+(require-unqualified std/http/routable)
 (require-unqualified std/string)
 
-(provide (all-from-out ui) (all-from-out router) (all-from-out events) (all-from-out dom) attach prevent-default!
-         stop-propagation!)
+(provide (all-from-out ui) (all-from-out router) (all-from-out events) (all-from-out dom) app attach web-app app-render
+         prevent-default! stop-propagation!)
 
 (define (prevent-default!) (dom-call-now! dom-event "preventDefault" (dom-values)))
 
 (define (stop-propagation!) (dom-call-now! dom-event "stopPropagation" (dom-values)))
 
 (define (attach-node [id string]) -> u32
-  (let ([n (dom-element id)])
+  (let ([n (dom-element id)] [rendered #f])
     (when (== n 0)
       (let ([b (make-buffer)])
         (buffer-add-string! (& b) "attach: no element has the id ")
         (buffer-add-string! (& b) id)
         (host-trap (buffer-string (& b)))))
+    (set! rendered (string-prefix? (dom-read-text n "firstChild.data") "["))
+    (when rendered
+      (let ([s (dom-call-node dom-document "querySelector" (dom-values (dom-text "style[data-ui]")))])
+        (unless (== (dom-read-number s "nodeType") 0.0) (dom-call-now! s "remove" (dom-values)))
+        (dom-forget-node! s)))
+    (dom-claiming! rendered)
     n))
+
+(define (page-title) -> string
+  (let* ([t (dom-call-node dom-document "querySelector" (dom-values (dom-text "title[data-ui]")))]
+         [given (if (== (dom-read-number t "nodeType") 0.0) (dom-read-text dom-document "title") (dom-read-text t "dataset.ui"))])
+    (dom-forget-node! t)
+    given))
 
 (define (attach-start!)
   (ui-read-with! dom-read-text dom-read-number dom-is)
   (ui-flush-with! dom-flush!)
-  (ui-title-first! (dom-read-text dom-document "title")))
+  (ui-title-first! (page-title)))
 
 (define (attach-scroll!)
   (let* ([url (location-href)] [i (string-index url #\#)] [a (make-arena)])
@@ -40,6 +53,26 @@
     (arena-free (& a))
     (free (-> url bytes))))
 
+;; ---- apps ----
+
+;; A fact on the app names the function that puts the app in the document, so that a server's program does not keep it.
+(struct web-app [render (fn ((ptr buffer) string string (ptr buffer)) -> u32)])
+
+;; app-render writes page, a document's HTML, into out with the app's roots rendered for target, a path and query. It
+;; returns the code that url-read gives for target (routable.sub). On url-moved, it writes the target to go to into to.
+;; out stays empty when the app's #:rendered declines the route.
+(define (app-render [a (ptr web-app)] [out (ptr buffer)] [page string] [target string] [to (ptr buffer)]) -> u32
+  ((-> a render) out page target to))
+
+;; The base of the page at target, read as router.sub reads it.
+(define (page-base [a (ptr arena)] [page string] [target string]) -> string
+  (let* ([at (found-from page "<base href=\"" 0)]
+         [document (if (< at (-> page length))
+                       (let ([from (+ at 12)]) (url-resolve a target (slice page from (found-from page "\"" from))))
+                       target)]
+         [dir (url-path (url-target (url-resolve a document ".")))])
+    (slice dir 0 (if (> (-> dir length) 0) (- (-> dir length) 1) 0))))
+
 (begin-for-syntax
   (require-unqualified compiler/macros)
   (require-unqualified std/meta/type-info)
@@ -51,50 +84,215 @@
   (define (type-text [t datum]) -> datum
     (datum->syntax #'here (string->datum (symbol->string (syntax-e (cadr (type-info t))))) 0))
 
-  ;; (attach option ... ["id" (c ([parameter value] ...))] ...) defines main, which puts each component in the element
-  ;; with its id. A view, (v e ...), can take a component's place. Once they are drawn, main scrolls to the element that
-  ;; the URL's fragment names. The option #:routes T, a routable type, starts the router with the URL read as a T.
+  (define (roots-of [who datum] [items datum] [s datum]) -> datum
+    (let ([out nil])
+      (for-each (lambda ([p datum])
+                  (let ([l (syntax->list p)])
+                    (cond [(and (!= l 0) (== (length l) 2) (string? (syntax-e (car l)))) (set! out (cons l out))]
+                          [(and (!= l 0) (pair? l) (identifier? (car l)))
+                           (set! out (cons `(,(datum->syntax #'here (string->datum "root") 0) ,p) out))]
+                          [else
+                           (raise-syntax-error who "expected (component ([parameter value] ...)) or (view e ...), alone or as [\"id\" root]" p)])))
+                items)
+      (when (null? out) (raise-syntax-error who "expected at least one root: (component ...) or (view ...), alone or as [\"id\" root]" s))
+      (reverse out)))
+
+  (define (root-route [call datum]) -> datum
+    (let* ([l (syntax->list call)] [head (if (and (!= l 0) (pair? l) (identifier? (car l))) (car l) 0)])
+      (if (and (!= head 0) (== (identifier-binding-kind head) 'compile-time-value))
+          (let ([c (syntax-local-value head)])
+            (if (and (pair? c) (== (car c) 'ui-component) (identifier? (list-ref c 6))) (list-ref c 6) 0))
+          0)))
+
+  ;; (app name root ... [#:rendered f]) defines name, a web-app. A root is ["id" call], or a call alone for the element
+  ;; with the id root. A call is (c ([parameter value] ...)) for a component, or (v e ...) for a view. A root whose
+  ;; component takes routes gives the app its routes. #:rendered f then tells, for a route, whether app-render writes
+  ;; the page.
+  (define (app-form [s datum]) -> datum
+    (syntax-match s
+      [(_ (? identifier? name) given ...)
+       (let ([items nil] [rest given] [rendered datum 0] [routes datum 0])
+         (while (and (pair? rest) (not (keyword? (syntax-e (car rest)))))
+           (set! items (cons (car rest) items))
+           (set! rest (cdr rest)))
+         (while (pair? rest)
+           (unless (and (== (syntax-e (car rest)) '#:rendered) (pair? (cdr rest)))
+             (raise-syntax-error 'app "the option is #:rendered f, after the roots" (car rest)))
+           (set! rendered (cadr rest))
+           (set! rest (cddr rest)))
+         (let ([roots (roots-of 'app (reverse items) s)])
+           (for-each (lambda ([r datum])
+                       (let ([t (root-route (cadr r))])
+                         (unless (== t 0)
+                           (unless (or (== routes 0) (equal? (syntax->datum (type-text routes)) (syntax->datum (type-text t))))
+                             (raise-syntax-error 'app "these roots take routes of different types" (cadr r)))
+                           (set! routes t))))
+                     roots)
+           (when (and (== routes 0) (!= rendered 0))
+             (raise-syntax-error 'app "#:rendered needs a root whose component takes routes" rendered))
+           (app-code name roots routes rendered)))]
+      [_ (raise-syntax-error 'app "expected (app name root ... [#:rendered f])" s)]))
+
+  (define (app-code [name datum] [roots datum] [routes datum] [rendered datum]) -> datum
+    (let ([start (routes-named name '"start")] [render (routes-named name '"render")]
+          [reader (routes-named name '"route-read")] [defs nil] [mounts nil] [renders nil] [ids nil] [k u32 0])
+      (for-each (lambda ([r datum])
+                  (let ([mount (routes-named name (string->datum (format-message "mount~a" `(,(make-integer k)))))])
+                    (set! defs (cons #`(ui-root #,mount (attach-node #,(car r)) #,(cadr r)) defs))
+                    (set! mounts (cons #`(#,mount) mounts))
+                    (set! ids (cons (car r) ids))
+                    (set! renders (cons #`(ui-render-root (+ parts #,(datum->syntax #'here (make-integer k) 0)) #,(cadr r))
+                                        renders))
+                    (+= k 1)))
+                roots)
+      (let ([n (datum->syntax #'here (make-integer k) 0)])
+        #`(begin
+            #,@(reverse defs)
+            #,@(if (== routes 0)
+                   nil
+                   `(,#`(define (#,reader [a (ptr arena)] [url string] [base string] [r (ptr void)] [to (ptr buffer)]) -> u32
+                          (#,(routes-named routes '"url-read") a url base (cast (ptr #,routes) r) to))))
+            (define (#,start)
+              (attach-start!)
+              #,@(if (== routes 0) nil `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes))))
+              #,@(reverse mounts)
+              (dom-claiming! #f)
+              (ui-titles!)
+              (dom-flush!)
+              (ui-started!)
+              #,(if (== routes 0) #'(attach-scroll!) #'(router-mounted!)))
+            (define (#,render [out (ptr buffer)] [page string] [target string] [to (ptr buffer)]) -> u32
+              (let ([parts (cast (ptr buffer) (calloc #,n (sizeof buffer)))] [read u32 url-found] [rendering #t]
+                    [route-arena (make-arena)])
+                #,@(if (== routes 0)
+                       nil
+                       `(,#`(let ([r (cast (ptr #,routes) (arena-alloc (& route-arena) (sizeof #,routes)))]
+                                  [base (page-base (& route-arena) page target)])
+                              (set! read (#,(routes-named routes '"url-read") (& route-arena) target base r to))
+                              (cond [(or (== read url-moved) (== read url-bad)) (set! rendering #f)]
+                                    #,@(if (== rendered 0) nil `(,#`[(== read url-found) (set! rendering (#,rendered r))])))
+                              (when rendering
+                                (router-render! target base)
+                                (ui-route-set! (cast (ptr void) r) #,(type-text routes))))))
+                (when rendering
+                  (ui-render-begin!)
+                  #,@(reverse renders)
+                  (page-write! out page (slice (array-of string #,@(reverse ids))) (slice parts #,n))
+                  (ui-render-end!)
+                  (ui-route-set! 0 ""))
+                (for ([i u32 0]) (< i #,n) (+= i 1) (buffer-free! (+ parts i)))
+                (free parts)
+                (arena-free (& route-arena))
+                read))
+            (define #,name web-app (web-app #:render #,render))
+            (#%fact #,name (quote-syntax (web-app-start #,start)))))))
+
+  (define (app-start [a datum]) -> datum
+    (for/each ([f (syntax-local-facts a)])
+      (let ([l (syntax->list (caddr f))])
+        (when (and (!= l 0) (== (length l) 2) (identifier? (car l)) (== (syntax-e (car l)) 'web-app-start))
+          (return (cadr l)))))
+    0)
+
+  ;; (attach app) defines main, which puts the app's roots in their elements. Once they are drawn, main scrolls to the
+  ;; element that the URL's fragment names. (attach root ...) does the same for an app of those roots.
   (define (attach-form [s datum]) -> datum
     (syntax-match s
+      [(_ (? identifier? a))
+       (let ([start (app-start a)])
+         (when (== start 0) (raise-syntax-error 'attach "expected an app, which app defines, or the roots of one" a))
+         #`(define (main) (#,start)))]
       [(_ given ...)
-       (let ([roots nil] [mounts nil] [k u32 0] [items given] [routes datum 0]
-             [reader (datum->syntax #'here 'attach-route-read 0)])
-         (while (and (pair? items) (keyword? (syntax-e (car items))))
-           (let ([word (syntax-e (car items))])
-             (unless (pair? (cdr items)) (raise-syntax-error 'attach "expected a value after the option" (car items)))
-             (unless (== word '#:routes) (raise-syntax-error 'attach "the option is #:routes TYPE" (car items)))
-             (set! routes (cadr items))
-             (set! items (cddr items))))
-         (for-each (lambda ([p datum])
-                     (let ([l (syntax->list p)])
-                       (unless (and (!= l 0) (== (length l) 2) (string? (syntax-e (car l))))
-                         (raise-syntax-error 'attach "expected [\"id\" (component ([parameter value] ...))] or [\"id\" (view e ...)]" p))
-                       (let ([mount (datum->syntax #'here (string->symbol (format-message "mount~a" `(,(make-integer k)))) 0)])
-                         (set! roots (cons #`(ui-root #,mount (attach-node #,(car l)) #,(cadr l)) roots))
-                         (set! mounts (cons #`(#,mount) mounts))
-                         (+= k 1))))
-                   items)
-         (when (null? roots) (raise-syntax-error 'attach "expected at least one [\"id\" (component ...)] or [\"id\" (view ...)]" s))
-         (let ([read (if (== routes 0) 0 (routes-named routes '"url-read"))])
-           (unless (or (== routes 0) (== (identifier-binding-kind read) 'function))
-             (raise-syntax-error 'attach (format-message "#:routes takes a routable type, and ~a is not one"
-                                                         `(,(syntax-e routes)))
-                                 routes))
-           #`(begin
-               #,@(reverse roots)
-               #,@(if (== routes 0)
-                      nil
-                      `(,#`(define (#,reader [a (ptr arena)] [url string] [base string] [r (ptr void)] [to (ptr buffer)])
-                             -> u32
-                             (#,read a url base (cast (ptr #,routes) r) to))))
-               (define (main)
-                 (attach-start!)
-                 #,@(if (== routes 0)
-                        nil
-                        `(,#`(router-start! #,reader (sizeof #,routes) #,(type-text routes))))
-                 #,@(reverse mounts)
-                 (ui-titles!)
-                 (dom-flush!)
-                 #,(if (== routes 0) #'(attach-scroll!) #'(router-mounted!))))))])))
+       (let ([name (datum->syntax #'here 'attached 0)])
+         #`(begin
+             (app #,name #,@given)
+             (define (main) (#,(routes-named name '"start")))))])))
 
+(define-syntax app app-form)
 (define-syntax attach attach-form)
+
+;; ---- writing a page ----
+
+(struct page-edit [at u32] [end u32] [text string])
+
+(define (found-from [s string] [part string] [from u32]) -> u32
+  (let ([i from])
+    (while (<= (+ i (-> part length)) (-> s length))
+      (when (== (slice s i (+ i (-> part length))) part) (return i))
+      (+= i 1))
+    (-> s length)))
+
+(define (tag-end [s string] [i u32]) -> u32
+  (let ([q u8 0])
+    (while (and (< i (-> s length)) (or (!= q 0) (!= (@ s i) #\>)))
+      (cond [(!= q 0) (when (== (@ s i) q) (set! q 0))]
+            [(or (== (@ s i) #\") (== (@ s i) #\')) (set! q (@ s i))])
+      (+= i 1))
+    (if (< i (-> s length)) (+ i 1) i)))
+
+(define (tag-start [s string] [i u32]) -> u32
+  (while (and (> i 0) (!= (@ s i) #\<)) (-= i 1))
+  i)
+
+(define (page-trap! [what string] [id string])
+  (let ([b (make-buffer)])
+    (buffer-add-string! (& b) "app-render: ")
+    (buffer-add-string! (& b) what)
+    (buffer-add-string! (& b) id)
+    (host-trap (buffer-string (& b)))))
+
+(define (id-at [page string] [id string]) -> u32
+  (let ([b (make-buffer)])
+    (buffer-add-string! (& b) " id=\"")
+    (buffer-add-string! (& b) id)
+    (buffer-add-byte! (& b) #\")
+    (let ([at (found-from page (buffer-string (& b)) 0)])
+      (buffer-free! (& b))
+      (when (== at (-> page length)) (page-trap! "the page has no element with the id " id))
+      at)))
+
+(define (edit! [edits (ptr buffer)] [at u32] [end u32] [text string])
+  (let ([e (page-edit #:at at #:end end #:text text)])
+    (buffer-add! edits (slice (cast (ptr u8) (& e)) (sizeof page-edit)))))
+
+(define (title-edit! [edits (ptr buffer)] [page string] [kept (ptr buffer)])
+  (let* ([open (found-from page "<title" 0)] [from (tag-end page open)] [to (found-from page "</title>" from)])
+    (when (< to (-> page length))
+      (buffer-add-string! kept "<title data-ui=\"")
+      (for ([i u32 from]) (< i to) (+= i 1)
+        (if (== (@ page i) #\") (buffer-add-string! kept "&quot;") (buffer-add-byte! kept (cast i32 (@ page i)))))
+      (buffer-add-string! kept "\">")
+      (ui-render-content! kept (ui-render-title))
+      (buffer-add-string! kept "</title>")
+      (edit! edits open (+ to 8) (buffer-string kept)))))
+
+(define (page-write! [out (ptr buffer)] [page string] [ids (slice string)] [parts (slice buffer)])
+  (let ([edits (make-buffer)] [style (make-buffer)] [title (make-buffer)] [first (-> page length)] [pos u32 0])
+    (for ([k u32 0]) (< k (-> ids length)) (+= k 1)
+      (let* ([at (id-at page (@ ids k))] [end (tag-end page at)])
+        (unless (== (found-from page "</" end) end) (page-trap! "this element is not empty: the one with the id " (@ ids k)))
+        (when (< (tag-start page at) first) (set! first (tag-start page at)))
+        (edit! (& edits) end end (buffer-string (& (@ parts k))))))
+    (let ([css (ui-render-styles)] [head (found-from page "</head>" 0)])
+      (when (> (-> css length) 0)
+        (buffer-add-string! (& style) "<style data-ui>")
+        (buffer-add-string! (& style) css)
+        (buffer-add-string! (& style) "</style>")
+        (let ([at (if (< head (-> page length)) head first)]) (edit! (& edits) at at (buffer-string (& style))))))
+    (when (ui-render-titled?) (title-edit! (& edits) page (& title)))
+    (let ([es (cast (ptr page-edit) (-> edits bytes))] [n (/ (-> edits length) (sizeof page-edit))])
+      (for ([i u32 1]) (< i n) (+= i 1)
+        (let ([e (@ es i)] [j i])
+          (while (and (> j 0) (< (-> e at) (-> (+ es (- j 1)) at)))
+            (set! (@ es j) (@ es (- j 1)))
+            (-= j 1))
+          (set! (@ es j) e)))
+      (for ([i u32 0]) (< i n) (+= i 1)
+        (let ([e (+ es i)])
+          (buffer-add-string! out (slice page pos (-> e at)))
+          (buffer-add-string! out (-> e text))
+          (set! pos (-> e end)))))
+    (buffer-add-string! out (slice page pos (-> page length)))
+    (buffer-free! (& edits))
+    (buffer-free! (& style))
+    (buffer-free! (& title))))

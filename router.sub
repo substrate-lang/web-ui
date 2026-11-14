@@ -20,9 +20,9 @@
 (require-unqualified std/string)
 (require-unqualified std/http/routable)
 
-(provide router-start! router-mounted! navigate! navigate-replace! navigate-with! navigate-back! navigate-forward!
-         route-url route-state navigating? navigation-wait! navigation-done! route-href route-current? router-text
-         router-current? router-base)
+(provide router-start! router-mounted! router-render! navigate! navigate-replace! navigate-with! navigate-back!
+         navigate-forward! route-url route-state navigating? navigation-wait! navigation-done! route-href route-current?
+         router-text router-current? router-base)
 
 (typedef route-reader (fn ((ptr arena) string string (ptr void) (ptr buffer)) -> u32))
 
@@ -333,6 +333,13 @@
   (set! announcer (+ (dom-add! (dom-template "<div aria-live=\"polite\" aria-atomic=\"true\" style=\"position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap\"><!--t--></div>") 0 0) 1)))
 
 (define (router-mounted!) (settle!))
+
+(define rendered arena)
+
+(define (router-render! [at string] [path string])
+  (arena-free (& rendered))
+  (set! url (copy (& rendered) at))
+  (set! base (copy (& rendered) path)))
 
 ;; ---- navigating from code ----
 

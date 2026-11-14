@@ -1,0 +1,8 @@
+;; An app with #:rendered, but no root that takes routes.
+(require-unqualified web-ui)
+
+(define (rendered? [n (ptr u32)]) -> bool #t)
+
+(view (page) (p "page"))
+
+(app page-app (page) #:rendered rendered?)

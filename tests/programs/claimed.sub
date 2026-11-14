@@ -1,0 +1,18 @@
+;; A view mounted while claiming. Its piece is claimed instead of copied. A boolean attribute that is off is taken off,
+;; since the rendered page may have it on.
+(require-unqualified web-ui/ui)
+(require-unqualified web-ui/trace)
+(require-unqualified std/web/patches)
+(provide main)
+
+(view (choice [on bool] [off bool])
+  (p (button ([disabled on]) "on") (button ([disabled off]) "off")))
+
+(ui-root mount-choice 0 (choice #t #f))
+
+(define (main)
+  (ui-flush-with! trace-patches!)
+  (dom-claiming! #t)
+  (mount-choice)
+  (dom-claiming! #f)
+  (trace-patches!))

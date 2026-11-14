@@ -1,0 +1,74 @@
+;; The test app's server, with its pages rendered (app-render). A path that the app's routes read gets the page with the
+;; app rendered into it, and other paths get the site's files. Under /frozen/, a page comes without its program, and a
+;; script in its place tells the tests that the page is ready. marked adds a script that marks the rendered elements
+;; before the program starts. mismatched does the same, and it renders the home page for every path.
+(require-unqualified host/fs)
+(require-unqualified std/http)
+(require-unqualified std/http/server)
+(require-unqualified std/http/static)
+(require-unqualified std/http/routable)
+(require-unqualified std/package/path)
+(require-unqualified std/string)
+(require-unqualified web-ui)
+(require-unqualified "../places.sub")
+(require routed "../routed.sub")
+
+(provide main marked mismatched)
+
+(define server http-server)
+(define files http-files)
+(define marking bool #f)
+(define mismatching bool #f)
+
+(define mark string "<script>for (const e of document.querySelectorAll('#root *')) e.dataset.rendered = ''</script>")
+
+(define (script-at [html string] [end (ptr u32)]) -> u32
+  (let* ([at (string-find html "host/web/start.mjs")] [from at])
+    (while (and (> from 0) (not (string-prefix? (slice html from (-> html length)) "<script"))) (-= from 1))
+    (set! (@ end) (+ at (string-find (slice html at (-> html length)) "</script>") 9))
+    from))
+
+(define (rendered! [r (ptr http-request)] [path string] [frozen bool])
+  (let ([page (slice u8)] [out (make-buffer)] [why error])
+    (unless (fs-read-file (joined-path (-> files root) "index.html") (& page) (& why))
+      (http-answer-text! r 500 (error-text (& why)))
+      (return))
+    (app-render (& routed:routed-app) (& out) (cast string page) (if mismatching "/" path) 0)
+    (let* ([html (buffer-string (& out))] [end u32 0] [at (script-at html (& end))])
+      (cond [frozen
+             (set! html (string-append 0 (slice html 0 at) "<script>window.ready = true</script>"
+                                       (slice html end (-> html length))))]
+            [marking (set! html (string-append 0 (slice html 0 at) mark (slice html at (-> html length))))])
+      (http-respond! r 200)
+      (http-header! r "content-type" "text/html; charset=utf-8")
+      (http-send-text! r html))
+    (buffer-free! (& out))
+    (free (-> page items))))
+
+(define (handle [r (ptr http-request)])
+  (let* ([target (-> r target)] [frozen (string-prefix? target "/frozen/")]
+         [path (if frozen (slice target 7 (-> target length)) target)])
+    (if (== (place.url-check (& (-> r arena)) path "" 0) url-found)
+        (rendered! r path frozen)
+        (http-static! r (& files)))))
+
+(define (listening [s (ptr http-server)])
+  (let ([line (make-buffer)])
+    (buffer-add-string! (& line) "http://127.0.0.1:")
+    (http-add-decimal! (& line) (cast i64 (-> s port)))
+    (buffer-add-string! (& line) "/\n")
+    (host-write 1 (buffer-bytes (& line)))))
+
+(define (served! [mark bool] [mismatch bool])
+  (set! marking mark)
+  (set! mismatching mismatch)
+  (set! (-> files root) (@ (host-args) 0))
+  (set! (-> server listening) listening)
+  (let ([why error])
+    (unless (http-serve! (& server) 0 handle (& why)) (host-exit 1 (error-text (& why))))))
+
+(define (main) (served! #f #f))
+
+(define (marked) (served! #t #f))
+
+(define (mismatched) (served! #t #t))

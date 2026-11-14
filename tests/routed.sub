@@ -7,6 +7,8 @@
 (require-unqualified std/http/routable)
 (require-unqualified "places.sub")
 
+(provide routed-app)
+
 (struct app-state [at place] [unsaved bool] [stopped string] [marked bool] [hashes u32])
 
 (variant app-message [went [to place]] [edited] [saved] [stopped [url string]] [marked] [three] [hashed])
@@ -23,10 +25,13 @@
 
 (define (unsaved? [s (ptr app-state)]) -> bool (-> s unsaved))
 
-(component (app)
+(define (app-init [s (ptr app-state)] [at place]) (set! (-> s at) at))
+
+(component (routed)
   #:state [s app-state]
   #:messages app-message
   #:update app-update
+  #:init app-init
   #:route went
   #:leaving [unsaved? stopped]
   (div ([on-window hashchange hashed])
@@ -69,4 +74,6 @@
         [(search query) (title "Search") (p ([id "page"]) "search " (text (-> query q)))]
         [lost (title "Lost") (p ([id "page"]) "lost")]))))
 
-(attach #:routes place ["root" (app)])
+(app routed-app (routed))
+
+(attach routed-app)

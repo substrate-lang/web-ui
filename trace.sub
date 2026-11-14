@@ -123,6 +123,9 @@
        (printf " ")
        (value (+ w (+ 5 (* k 3)))))
      (+ 5 (* (@ w 4) 3))]
+    [(18) (printf "claim ") (number (@ w 1)) (printf " as ") (node (@ w 2))
+          (printf " with ") (number (@ w 3)) (printf " in ") (node (@ w 4))
+          (printf " before ") (node (@ w 5)) 6]
     [else (printf "?") 1000000]))
 
 (define (trace-patches!)
