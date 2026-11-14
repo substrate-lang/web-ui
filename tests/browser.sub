@@ -261,7 +261,6 @@
     (expect-text b (by-css "#page") "home")
     (expect-text b (by-css "title") "Home")))
 
-;; HTML without comments and data-n attributes, the marks of templates and of app-render.
 (define (unmarked [s string]) -> string
   (let ([b (make-buffer)] [i u32 0])
     (while (< i (-> s length))

@@ -1,8 +1,7 @@
-;; The test app's server, with its pages rendered: a path that the app's routes read gets the app's page with the app
-;; rendered into it (app-render). Under /frozen/, such a page comes without its program, so the browser shows only what
-;; was rendered, and a script in its place tells the tests that the page is ready. Other paths get the site's files.
-;; marked serves the pages with a script that marks the rendered elements before the program starts, and mismatched
-;; does the same with the home page rendered for every path.
+;; The test app's server, with its pages rendered (app-render). A path that the app's routes read gets the page with the
+;; app rendered into it, and other paths get the site's files. Under /frozen/, a page comes without its program, and a
+;; script in its place tells the tests that the page is ready. marked adds a script that marks the rendered elements
+;; before the program starts. mismatched does the same, and it renders the home page for every path.
 (require-unqualified host/fs)
 (require-unqualified std/http)
 (require-unqualified std/http/server)
@@ -23,7 +22,6 @@
 
 (define mark string "<script>for (const e of document.querySelectorAll('#root *')) e.dataset.rendered = ''</script>")
 
-;; Where the script that loads host/web/start.mjs starts in html, and in end where it ends.
 (define (script-at [html string] [end (ptr u32)]) -> u32
   (let* ([at (string-find html "host/web/start.mjs")] [from at])
     (while (and (> from 0) (not (string-prefix? (slice html from (-> html length)) "<script"))) (-= from 1))

@@ -336,7 +336,6 @@
 
 (define rendered arena)
 
-;; router-render! gives route-href and route-current? the target and base of a page that app-render renders.
 (define (router-render! [at string] [path string])
   (arena-free (& rendered))
   (set! url (copy (& rendered) at))

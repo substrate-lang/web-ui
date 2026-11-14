@@ -372,7 +372,6 @@
     (set! (-> l next) route-listeners)
     (set! route-listeners l)))
 
-;; The current route, which a component that takes routes gets in its #:init, and app-render sets.
 (define (ui-route-now) -> (ptr void) route-now)
 
 (define (ui-route-set! [route (ptr void)] [type string])
@@ -501,7 +500,6 @@
 
 ;; ---- run-time support: starting ----
 
-;; The instances mounted since the last drawing whose #:start has not run yet.
 (struct ui-start [instance (ptr ui-instance)] [run (fn ((ptr void)))])
 
 (define starts buffer)
@@ -516,8 +514,6 @@
   (let ([p (cast (ptr ui-start) (-> starts bytes))] [n (/ (-> starts length) (sizeof ui-start))])
     (for ([k u32 0]) (< k n) (+= k 1) (when (== (-> (+ p k) instance) i) (set! (-> (+ p k) instance) 0)))))
 
-;; ui-started! runs the #:start of each instance mounted since the last drawing, once its patches are sent, and then
-;; draws what the starts changed.
 (define (ui-started!)
   (let ([n (/ (-> starts length) (sizeof ui-start))])
     (when (> n 0)
@@ -529,9 +525,9 @@
 
 ;; ---- run-time support: rendering ----
 
-;; While rendering, app-render (web-ui.sub) has the views write HTML: their templates' HTML, each piece between
-;; <!--[DIGEST--> and <!--]-->, where DIGEST names the piece's template, and each text between <!--t--> and <!---->. Each
-;; render adds a view's stylesheet once.
+;; While rendering, the views write HTML for app-render (web-ui.sub). Each piece is between <!--[DIGEST--> and <!--]-->,
+;; where DIGEST names the piece's template, and each text is between <!--t--> and <!---->. host/web/dom.mjs reads these
+;; marks when it claims the pieces.
 (define rendering bool #f)
 (define renders u32 0)
 (define render-styles buffer)
@@ -736,9 +732,8 @@
   (require-unqualified std/meta/type-info)
   (require-unqualified std/html)
 
-  ;; A block's render code writes its template's HTML, with each changing part filled in: sent is how much of the
-  ;; template the code has written so far, and attributes and content hold the current element's changing attributes and
-  ;; text, which the code writes when the element's start tag is done.
+  ;; sent is how much of the template's HTML the render code has written. attributes and content hold the changing
+  ;; attributes and text of the element being compiled.
   (struct block [html buffer] [nodes u32] [fields datum] [mount datum] [update datum] [unmount datum]
           [state datum] [template datum] [unmounter datum] [render datum] [sent u32] [attributes datum] [content datum])
 
@@ -801,7 +796,6 @@
   (define (render! [b (ptr block)] [code datum]) (set! (-> b render) (cons code (-> b render))))
   (define (attribute-render! [b (ptr block)] [code datum]) (set! (-> b attributes) (cons code (-> b attributes))))
 
-  ;; chunk! adds the template's HTML written since the last chunk to the block's render code.
   (define (chunk! [b (ptr block)])
     (let ([h (html-of b)])
       (when (> (-> h length) (-> b sent))
@@ -810,8 +804,7 @@
 
   (define (skip! [b (ptr block)]) (set! (-> b sent) (-> (html-of b) length)))
 
-  ;; The digest of a template's HTML, which the host compares when a piece is claimed (host/web/dom.mjs): FNV-1a of its
-  ;; bytes, in 8 hex digits.
+  ;; The digest that host/web/dom.mjs checks when it claims a piece: FNV-1a of the HTML's bytes, in 8 hex digits.
   (define (digest [html string]) -> string
     (let ([h u32 2166136261] [out (make-buffer)] [hex "0123456789abcdef"])
       (for ([i u32 0]) (< i (-> html length)) (+= i 1) (set! h (* (bit-xor h (cast u32 (@ html i))) 16777619)))
@@ -1576,7 +1569,7 @@
   ;; the document. #:changed runs before a drawing whose parameters differ, bit for bit, from those of the drawing
   ;; before. All three take the state and the parameters. #:free runs when an instance is unmounted, and after it is
   ;; rendered. The stylesheet is added to the document when the first instance is mounted. #:route names a message case
-  ;; that holds a route. #:init then takes the route the instance starts at, after the parameters, and the instance gets
+  ;; that holds a route. #:init then takes the route the instance starts at, after the parameters. The instance gets
   ;; that message with the route after each navigation. While (held? state) is true, the router stops navigations.
   ;; #:leaving names a case that holds a string, and the instance gets it with the URL of each navigation the router
   ;; stops.
@@ -1779,8 +1772,6 @@
                         (ui-root! render))))]))]
       [_ (raise-syntax-error 'ui-root "expected (ui-root mount node (c ([parameter value] ...))) or (ui-root mount node (v e ...))" s)]))
 
-  ;; (ui-render-root out (c ([parameter value] ...))) writes the HTML of an instance of c to the buffer out, and
-  ;; (ui-render-root out (v e ...)) that of a view.
   (define (render-root-form [s datum]) -> datum
     (syntax-match s
       [(_ out call)

@@ -1,5 +1,5 @@
-;; Rendering: the HTML that app-render writes for each kind of changing part, a component with #:init, #:start and
-;; #:free, a component that takes routes, and a page's stylesheets and title.
+;; The HTML that app-render writes for each kind of changing part, for a component with #:init, #:start and #:free, for
+;; a component that takes routes, and for a page's stylesheets and title.
 (require-unqualified web-ui)
 (require-unqualified std/http/routable)
 (require-unqualified "../places.sub")

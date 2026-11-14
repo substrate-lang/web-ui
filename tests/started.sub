@@ -1,4 +1,4 @@
-;; Components with #:start: one drawn at first, and one drawn after a click.
+;; Components with #:start. One is drawn at first, and one is drawn after a click.
 (require-unqualified web-ui)
 (require-unqualified std/string)
 

@@ -14,7 +14,6 @@
 
 (define (handle [r (ptr http-request)]) (http-static! r (& files)))
 
-;; The page of the app that the path is under.
 (define (app-page [r (ptr http-request)] [f (ptr http-files)]) -> bool
   (http-send-file! r f (if (string-prefix? (url-path (-> r target)) "/inner/") "inner/index.html" "index.html"))
   #t)
