@@ -1,0 +1,5 @@
+template 1 <p><button data-n>on</button><button data-n>off</button></p>
+claim 1 as #3 with 2 in #0 before #0
+attr #4 disabled=""
+unattr #5 disabled
+--

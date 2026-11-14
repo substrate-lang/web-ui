@@ -83,7 +83,8 @@
 
 (define (ui-truth-set! [cache (ptr bool)] [node u32] [name string] [on bool])
   (set! (@ cache) on)
-  (when on (dom-set-attr! node name "")))
+  (cond [on (dom-set-attr! node name "")]
+        [(dom-claiming?) (dom-remove-attr! node name)]))
 
 (define (ui-truth-slot! [cache (ptr bool)] [node u32] [name string] [on bool])
   (when (!= (@ cache) on)

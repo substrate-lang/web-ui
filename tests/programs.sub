@@ -8,6 +8,7 @@
 (require views "programs/views.sub")
 (require changes "programs/changes.sub")
 (require rendered "programs/rendered.sub")
+(require claimed "programs/claimed.sub")
 (require svg "programs/svg.sub")
 
 (test components #:output-file "programs/components.out" (components:main))
@@ -19,4 +20,5 @@
 (test views #:output-file "programs/views.out" (views:main))
 (test changes #:output-file "programs/changes.out" (changes:main))
 (test rendered #:output-file "programs/rendered.out" (rendered:main))
+(test claimed #:output-file "programs/claimed.out" (claimed:main))
 (test svg #:output-file "programs/svg.out" (svg:main))
