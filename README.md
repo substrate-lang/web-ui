@@ -9,4 +9,4 @@ document, and which a server can write into a page's HTML with app-render. When
 the app's component takes routes, attach also starts the router, which keeps the
 URL as a route in step with the browser's history.
 
-    substrate test -A        # the tests, fourteen of them in Chromium
+    substrate test -A        # the tests, nineteen of them in Chromium
