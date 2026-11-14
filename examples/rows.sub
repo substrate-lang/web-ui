@@ -1,8 +1,9 @@
 ;; A table whose rows are created, updated, swapped and removed, to measure the views.
 (require-unqualified "../web-ui.sub")
+(require-unqualified std/vector)
 
 (struct row [id u32] [label string])
-(struct model [rows (ptr row)] [count u32] [room u32] [made u32] [selected u32])
+(struct model [rows (vector row)] [made u32] [selected u32])
 (variant message [create] [create-many] [append] [update-some] [swap] [clear] [select [id u32]] [remove [id u32]])
 (messages message)
 
@@ -23,19 +24,16 @@
     (cast string (slice p (+ n m 1)))))
 
 (define (add-rows! [m (ptr model)] [n u32])
-  (when (> (+ (-> m count) n) (-> m room))
-    (set! (-> m room) (+ (* 2 (-> m room)) n))
-    (set! (-> m rows) (cast (ptr row) (realloc (-> m rows) (* (-> m room) (sizeof row))))))
+  (vector-reserve! (& (-> m rows)) (+ (vector-count (& (-> m rows))) n))
   (for ([i u32 0]) (< i n) (+= i 1)
-    (let ([r (+ (-> m rows) (-> m count))])
+    (let ([r (vector-add! (& (-> m rows)))])
       (+= (-> m made) 1)
       (set! (-> r id) (-> m made))
-      (set! (-> r label) (label))
-      (+= (-> m count) 1))))
+      (set! (-> r label) (label)))))
 
 (define (clear! [m (ptr model)])
-  (for ([i u32 0]) (< i (-> m count)) (+= i 1) (free (-> (+ (-> m rows) i) label bytes)))
-  (set! (-> m count) 0))
+  (vector-each ([r (& (-> m rows))]) (free (-> r label bytes)))
+  (vector-clear! (& (-> m rows))))
 
 (define (init [m (ptr model)])
   (set! (@ adjectives 0) "pretty") (set! (@ adjectives 1) "large") (set! (@ adjectives 2) "small")
@@ -50,26 +48,25 @@
     [create-many (clear! m) (add-rows! m 10000)]
     [append (add-rows! m 1000)]
     [update-some
-     (for ([i u32 0]) (< i (-> m count)) (+= i 10)
-       (let* ([r (+ (-> m rows) i)] [n (-> r label length)] [p (-> (new 0 u8 (+ n 4)) items)])
+     (for ([i u32 0]) (< i (vector-count (& (-> m rows)))) (+= i 10)
+       (let* ([r (vector-at-unchecked (& (-> m rows)) i)] [n (-> r label length)] [p (-> (new 0 u8 (+ n 4)) items)])
          (memcpy p (-> r label bytes) n)
          (memcpy (+ p n) " !!!" 4)
          (free (-> r label bytes))
          (set! (-> r label) (cast string (slice p (+ n 4))))))]
     [swap
-     (when (> (-> m count) 3)
-       (let ([a (+ (-> m rows) 1)] [b (+ (-> m rows) (- (-> m count) 2))] [t row])
+     (when (> (vector-count (& (-> m rows))) 3)
+       (let ([a (vector-at (& (-> m rows)) 1)] [b (vector-at (& (-> m rows)) (- (vector-count (& (-> m rows))) 2))] [t row])
          (set! t (@ a))
          (set! (@ a) (@ b))
          (set! (@ b) t)))]
     [clear (clear! m)]
     [(select id) (set! (-> m selected) id)]
     [(remove id)
-     (for ([i u32 0]) (< i (-> m count)) (+= i 1)
-       (when (== (-> (+ (-> m rows) i) id) id)
-         (free (-> (+ (-> m rows) i) label bytes))
-         (memcpy (+ (-> m rows) i) (+ (-> m rows) (+ i 1)) (* (- (-> m count) i 1) (sizeof row)))
-         (-= (-> m count) 1)
+     (vector-each ([r i (& (-> m rows))])
+       (when (== (-> r id) id)
+         (free (-> r label bytes))
+         (vector-remove! (& (-> m rows)) i)
          (break)))]))
 
 (view (row-view [r (ptr row)] [m (ptr model)])
@@ -90,6 +87,6 @@
     (button ([id "update"] [on click update-some]) "update every 10th row")
     (button ([id "swap"] [on click swap]) "swap rows")
     (button ([id "clear"] [on click clear]) "clear"))
-  (table (tbody (each [r (-> m rows) (-> m count)] #:key (-> r id) (row-view r m)))))
+  (table (tbody (each [r (-> m rows items) (-> m rows count)] #:key (-> r id) (row-view r m)))))
 
 (attach ["root" (rows)])
