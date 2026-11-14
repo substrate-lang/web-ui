@@ -66,9 +66,9 @@
 
 ;; The base of the page at target, read as router.sub reads it.
 (define (page-base [a (ptr arena)] [page string] [target string]) -> string
-  (let* ([at (found-from page "<base href=\"" 0)]
+  (let* ([at (string-find page "<base href=\"")]
          [document (if (< at (-> page length))
-                       (let ([from (+ at 12)]) (url-resolve a target (slice page from (found-from page "\"" from))))
+                       (let ([from (+ at 12)]) (url-resolve a target (slice page from (string-find-from page "\"" from))))
                        target)]
          [dir (url-path (url-target (url-resolve a document ".")))])
     (slice dir 0 (if (> (-> dir length) 0) (- (-> dir length) 1) 0))))
@@ -215,13 +215,6 @@
 
 (struct page-edit [at u32] [end u32] [text string])
 
-(define (found-from [s string] [part string] [from u32]) -> u32
-  (let ([i from])
-    (while (<= (+ i (-> part length)) (-> s length))
-      (when (== (slice s i (+ i (-> part length))) part) (return i))
-      (+= i 1))
-    (-> s length)))
-
 (define (tag-end [s string] [i u32]) -> u32
   (let ([q u8 0])
     (while (and (< i (-> s length)) (or (!= q 0) (!= (@ s i) #\>)))
@@ -246,7 +239,7 @@
     (buffer-add-string! (& b) " id=\"")
     (buffer-add-string! (& b) id)
     (buffer-add-byte! (& b) #\")
-    (let ([at (found-from page (buffer-string (& b)) 0)])
+    (let ([at (string-find page (buffer-string (& b)))])
       (buffer-free! (& b))
       (when (== at (-> page length)) (page-trap! "the page has no element with the id " id))
       at)))
@@ -256,7 +249,7 @@
     (buffer-add! edits (slice (cast (ptr u8) (& e)) (sizeof page-edit)))))
 
 (define (title-edit! [edits (ptr buffer)] [page string] [kept (ptr buffer)])
-  (let* ([open (found-from page "<title" 0)] [from (tag-end page open)] [to (found-from page "</title>" from)])
+  (let* ([open (string-find page "<title")] [from (tag-end page open)] [to (string-find-from page "</title>" from)])
     (when (< to (-> page length))
       (buffer-add-string! kept "<title data-ui=\"")
       (for ([i u32 from]) (< i to) (+= i 1)
@@ -270,10 +263,10 @@
   (let ([edits (make-buffer)] [style (make-buffer)] [title (make-buffer)] [first (-> page length)] [pos u32 0])
     (for ([k u32 0]) (< k (-> ids length)) (+= k 1)
       (let* ([at (id-at page (@ ids k))] [end (tag-end page at)])
-        (unless (== (found-from page "</" end) end) (page-trap! "this element is not empty: the one with the id " (@ ids k)))
+        (unless (== (string-find-from page "</" end) end) (page-trap! "this element is not empty: the one with the id " (@ ids k)))
         (when (< (tag-start page at) first) (set! first (tag-start page at)))
         (edit! (& edits) end end (buffer-string (& (@ parts k))))))
-    (let ([css (ui-render-styles)] [head (found-from page "</head>" 0)])
+    (let ([css (ui-render-styles)] [head (string-find page "</head>")])
       (when (> (-> css length) 0)
         (buffer-add-string! (& style) "<style data-ui>")
         (buffer-add-string! (& style) css)
