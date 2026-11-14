@@ -199,7 +199,7 @@
 (define (has-word? [s string] [word string]) -> bool
   (let ([start u32 0])
     (for ([i u32 0]) (<= i (-> s length)) (+= i 1)
-      (when (or (== i (-> s length)) (== (@ s i) #\space) (== (@ s i) #\tab) (== (@ s i) #\newline) (== (@ s i) 12)
+      (when (or (== i (-> s length)) (== (@ s i) #\space) (== (@ s i) #\tab) (== (@ s i) #\newline) (== (@ s i) #\page)
                 (== (@ s i) #\return))
         (when (== (slice s start i) word) (return #t))
         (set! start (+ i 1))))
