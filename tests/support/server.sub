@@ -1,18 +1,23 @@
-;; The test app's server. It answers with the site's files, and with the app for a path that names no file, as the
-;; app's routes read that path. The app is at / and at /inner/, where the outer site mounts it.
+;; The test app's server. It answers with the site's files, and with the app's page for a path that names no file. The
+;; app is at / and at /inner/, where the outer site mounts it.
 (require-unqualified host/events)
 (require-unqualified std/http)
 (require-unqualified std/http/server)
 (require-unqualified std/http/static)
-(require-unqualified "../places.sub")
+(require-unqualified std/http/url)
+(require-unqualified std/string)
 
 (provide main)
 
 (define server http-server)
 (define files http-files)
-(define apps (array http-app 2))
 
 (define (handle [r (ptr http-request)]) (http-static! r (& files)))
+
+;; The page of the app that the path is under.
+(define (app-page [r (ptr http-request)] [f (ptr http-files)]) -> bool
+  (http-send-file! r f (if (string-prefix? (url-path (-> r target)) "/inner/") "inner/index.html" "index.html"))
+  #t)
 
 (define (listening [s (ptr http-server)])
   (let ([line (make-buffer)])
@@ -23,9 +28,7 @@
 
 (define (main)
   (set! (-> files root) (@ (host-args) 0))
-  (set! (@ apps 0) (http-app #:path "/" #:page "index.html" #:routes place.url-check))
-  (set! (@ apps 1) (http-app #:path "/inner/" #:page "inner/index.html" #:routes place.url-check))
-  (set! (-> files apps) (slice apps))
+  (set! (-> files fallback) app-page)
   (set! (-> server listening) listening)
   (let ([why error])
     (unless (http-serve! (& server) 0 handle (& why)) (host-exit 1 (error-text (& why))))))

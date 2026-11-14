@@ -21,9 +21,14 @@
 (define marking bool #f)
 (define mismatching bool #f)
 
-(define script string "<script type=\"module\" src=\"host/web/start.mjs\"></script>")
-
 (define mark string "<script>for (const e of document.querySelectorAll('#root *')) e.dataset.rendered = ''</script>")
+
+;; Where the script that loads host/web/start.mjs starts in html, and in end where it ends.
+(define (script-at [html string] [end (ptr u32)]) -> u32
+  (let* ([at (string-find html "host/web/start.mjs")] [from at])
+    (while (and (> from 0) (not (string-prefix? (slice html from (-> html length)) "<script"))) (-= from 1))
+    (set! (@ end) (+ at (string-find (slice html at (-> html length)) "</script>") 9))
+    from))
 
 (define (rendered! [r (ptr http-request)] [path string] [frozen bool])
   (let ([page (slice u8)] [out (make-buffer)] [why error])
@@ -31,10 +36,10 @@
       (http-answer-text! r 500 (error-text (& why)))
       (return))
     (app-render (& routed:routed-app) (& out) (cast string page) (if mismatching "/" path) 0)
-    (let* ([html (buffer-string (& out))] [at (string-find html script)])
+    (let* ([html (buffer-string (& out))] [end u32 0] [at (script-at html (& end))])
       (cond [frozen
              (set! html (string-append 0 (slice html 0 at) "<script>window.ready = true</script>"
-                                       (slice html (+ at (-> script length)) (-> html length))))]
+                                       (slice html end (-> html length))))]
             [marking (set! html (string-append 0 (slice html 0 at) mark (slice html at (-> html length))))])
       (http-respond! r 200)
       (http-header! r "content-type" "text/html; charset=utf-8")
