@@ -14,4 +14,4 @@
   [draft ("draft" "")]
   [long ("long" "")]
   [search ("search" "") (query search-query)]
-  [#:moved ("index.html") home])
+  [#:moved ("index.html") .home])

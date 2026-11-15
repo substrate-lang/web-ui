@@ -1415,8 +1415,8 @@
             (fail message (format "the message ~a takes ~a, but the event ~a carries ~a"
                                   `(,(syntax-e message) ,taken ,(syntax-e event) ,carried)))))
         (let* ([vars (for/list ([x (cdr event-case)]) (literal (string->symbol (format-message "v~a" `(,(syntax-e (car x)))))))]
-               [pattern (if (null? vars) (dotted (car event-case)) #`(#,(dotted (car event-case)) #,@vars))]
-               [made (if (null? (cdr message-case)) (dotted (car message-case)) #`(#,(dotted (car message-case)) #,@vars))])
+               [pattern (case-code (car event-case) vars)]
+               [made (case-code (car message-case) (if (null? (cdr message-case)) nil vars))])
           (set! fills
                 (cons #`(define (#,fn [parent (ptr void)] [e (ptr void)])
                           (match (cast (ptr #,events) e)
