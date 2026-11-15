@@ -68,9 +68,9 @@
   #:messages totals-message
   #:update totals-update
   #:init totals-init
-  (counter ([step (-> s step)] [on changed left-changed]))
+  (counter ([step (-> s step)] [on .changed .left-changed]))
   (when (-> s shown)
-    (counter ([step 2] [on changed right-changed]))
+    (counter ([step 2] [on .changed .right-changed]))
     (loader))
   (p "total " (int (+ (-> s left) (-> s right))))
   (button ([on click .bigger]) "bigger")

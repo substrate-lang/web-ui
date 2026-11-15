@@ -176,9 +176,9 @@
 (define (settle!)
   (set! due #f)
   (when moved
-    (dom-call-with! dom-document "body.setAttribute" (slice (array-of dom-value (.dom-text "tabindex") (.dom-text "-1"))))
+    (dom-call-with! dom-document "body.setAttribute" (slice (array-of dom-value (.text "tabindex") (.text "-1"))))
     (dom-call! dom-document "body.focus")
-    (dom-call-with! dom-document "body.removeAttribute" (slice (array-of dom-value (.dom-text "tabindex"))))
+    (dom-call-with! dom-document "body.removeAttribute" (slice (array-of dom-value (.text "tabindex"))))
     (dom-set-text! announcer (dom-read-text dom-document "title")))
   (case scrolling
     [(1) (scroll-fragment!)]
@@ -206,14 +206,14 @@
     #f))
 
 (define (has-attribute? [node u32] [method string] [name string]) -> bool
-  (!= (dom-call-number node method (dom-values (.dom-text name))) 0.0))
+  (!= (dom-call-number node method (dom-values (.text name))) 0.0))
 
 (define (prevent!) (dom-call-now! dom-event "preventDefault" (dom-values)))
 
 (define svg-namespace string "http://www.w3.org/2000/svg")
 
 (define (attribute-text [name string]) -> string
-  (dom-call-text dom-event "currentTarget.getAttribute" (dom-values (.dom-text name))))
+  (dom-call-text dom-event "currentTarget.getAttribute" (dom-values (.text name))))
 
 (define (link-url [a (ptr arena)] [svg bool]) -> string
   (if svg

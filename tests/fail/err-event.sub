@@ -7,5 +7,5 @@
 (messages msg)
 
 (view (page [m (ptr model)])
-  (button ([on clik increment]) "+"))
+  (button ([on clik .increment]) "+"))
 (define (main) 0)

@@ -6,5 +6,5 @@
 (messages msg)
 
 (view (page [m (ptr model)])
-  (div ([on wheel (turned (event-number deltaY))])))
+  (div ([on wheel (.turned (event-number deltaY))])))
 (define (main) 0)

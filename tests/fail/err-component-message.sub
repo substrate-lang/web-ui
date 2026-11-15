@@ -18,5 +18,5 @@
   #:state [s page-state]
   #:messages page-message
   #:update page-update
-  (counter ([on changed named])))
+  (counter ([on .changed .named])))
 (define (main) 0)

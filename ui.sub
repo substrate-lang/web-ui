@@ -878,17 +878,16 @@
 
   (define (type-name [t datum]) -> datum (syntax-e t))
 
-  ;; A variant's case named c, as type-info gives it: (case (field . type) ...), or 0.
+  ;; The case of the variant t that c names, as in .changed, as type-info gives it: (case (field . type) ...), or 0.
   (define (variant-case [t datum] [c datum]) -> datum
-    (let ([cases (caddr (type-info t))] [found datum 0]
-          [name (let ([u (undotted (syntax-e c))]) (if (== u 0) (syntax-e c) u))])
+    (let ([cases (caddr (type-info t))] [found datum 0] [name (undotted (syntax-e c))])
       (while (pair? cases)
         (when (== (syntax-e (car (car cases))) name) (set! found (car cases)))
         (set! cases (cdr cases)))
       found))
 
   (define (case-names [t datum]) -> datum
-    (for/list ([c (caddr (type-info t))]) (syntax-e (car c))))
+    (for/list ([c (caddr (type-info t))]) (syntax-e (dotted (car c)))))
 
   (define (single-case? [t datum]) -> bool (== (length (caddr (type-info t))) 1))
 
@@ -1371,19 +1370,19 @@
         (set! attributes (cdr attributes)))
       found))
 
-  ;; (c ([parameter value] ... [on event message] ...))
+  ;; (c ([parameter value] ... [on .event .message] ...))
   (define (component-attributes [f datum] [l datum] [c datum]) -> datum
     (let ([params (syntax->list (caddr c))] [given nil] [listeners nil]
           [attributes (cond [(null? (cdr l)) nil]
                             [(and (null? (cddr l)) (!= (syntax->list (cadr l)) 0)) (syntax->list (cadr l))]
-                            [else (fail f '"expected (component ([parameter value] ... [on event message] ...))")])])
+                            [else (fail f '"expected (component ([parameter value] ... [on .event .message] ...))")])])
       (for-each (lambda ([a datum])
                   (let ([al (syntax->list a)])
                     (unless (and (!= al 0) (pair? al) (identifier? (car al)))
-                      (fail a '"expected [parameter value] or [on event message]"))
+                      (fail a '"expected [parameter value] or [on .event .message]"))
                     (cond [(== (syntax-e (car al)) 'on)
                            (unless (and (== (length al) 3) (identifier? (cadr al)) (identifier? (caddr al)))
-                             (fail a '"expected [on event message], with the names of a case of the component's events and a case of this view's messages"))
+                             (fail a '"expected [on .event .message], with a case of the component's events and a case of this view's messages"))
                            (set! listeners (cons al listeners))]
                           [(!= (attribute-named given (syntax-e (car al))) 0)
                            (fail (car al) (format "the parameter ~a is given twice" `(,(syntax-e (car al)))))]
@@ -1416,8 +1415,8 @@
             (fail message (format "the message ~a takes ~a, but the event ~a carries ~a"
                                   `(,(syntax-e message) ,taken ,(syntax-e event) ,carried)))))
         (let* ([vars (for/list ([x (cdr event-case)]) (literal (string->symbol (format-message "v~a" `(,(syntax-e (car x)))))))]
-               [pattern (if (null? vars) (car event-case) #`(#,(car event-case) #,@vars))]
-               [made (if (null? (cdr message-case)) (car message-case) #`(#,(car message-case) #,@vars))])
+               [pattern (if (null? vars) (dotted (car event-case)) #`(#,(dotted (car event-case)) #,@vars))]
+               [made (if (null? (cdr message-case)) (dotted (car message-case)) #`(#,(dotted (car message-case)) #,@vars))])
           (set! fills
                 (cons #`(define (#,fn [parent (ptr void)] [e (ptr void)])
                           (match (cast (ptr #,events) e)
@@ -1564,8 +1563,8 @@
       (cdr (cadr found))))
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:start f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and
-  ;; #:leaving [held? case]. Its instances each have a state, which the children see as s. #:init runs when an instance
+  ;; #:init f, #:start f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route .case and
+  ;; #:leaving [held? .case]. Its instances each have a state, which the children see as s. #:init runs when an instance
   ;; is mounted, and when it is rendered. #:start runs only in the browser, after the instance's first drawing reaches
   ;; the document. #:changed runs before a drawing whose parameters differ, bit for bit, from those of the drawing
   ;; before. All three take the state and the parameters. #:free runs when an instance is unmounted, and after it is
