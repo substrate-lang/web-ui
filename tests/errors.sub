@@ -6,7 +6,7 @@
 (test err-component-missing (expect-compile-error "fail/err-component-missing.sub" "err-component-missing.sub:14:3: error: view: the component counter needs the parameter start"))
 (test err-component-parameter (expect-compile-error "fail/err-component-parameter.sub" "err-component-parameter.sub:14:23: error: view: the component counter has no parameter stepp"))
 (test err-component-state (expect-compile-error "fail/err-component-state.sub" "err-component-state.sub:8:1: error: component: a component needs #:state [name TYPE]"))
-(test err-emit (expect-compile-error "fail/err-emit.sub" "err-emit.sub:7:83: error: emit!: expected a case of a variant: (case value ...), or case alone"))
+(test err-emit (expect-compile-error "fail/err-emit.sub" "err-emit.sub:7:83: error: emit!: expected a value of a variant type, as in (T .case value ...)"))
 (test err-attribute (expect-compile-error "fail/err-attribute.sub" "err-attribute.sub:10:10: error: view: unknown attribute clas for the element div (to use an attribute that HTML does not define, write its name as a string: [\"clas\" value])"))
 (test err-draw (expect-compile-error "fail/err-draw.sub" "err-draw.sub:10:10: error: view: draw can only be used on a canvas element"))
 (test err-draw-key (expect-compile-error "fail/err-draw-key.sub" "err-draw-key.sub:10:18: error: expected i64, got string"))

@@ -11,7 +11,7 @@
 (messages msg)
 
 (view (row [x (ptr item)])
-  (li ([class (if (-> x done) "done" "")] [on click (toggle (-> x id))])
+  (li ([class (if (-> x done) "done" "")] [on click (.toggle (-> x id))])
     (text (-> x name))
     (if (-> x done) (b "done") (i "to do"))))
 
@@ -37,7 +37,7 @@
   #:style ".page { margin: 0 }"
   (title (-> m title))
   (h1 (text (-> m title)) " & " (int (cast i64 (-> m count))))
-  (button ([disabled (== (-> m count) 0)] [tabindex (cast i64 (-> m count))] [on click increment]) "+")
+  (button ([disabled (== (-> m count) 0)] [tabindex (cast i64 (-> m count))] [on click .increment]) "+")
   (ul (each [x (-> m items) (-> m n)] #:key (cast u64 (-> x id)) (row x)))
   (ol (each [x (-> m items) (-> m n)] #:key (cast u64 (-> x id)) (li (text (-> x name)))))
   (when (> (-> m count) 1) (p "many"))
@@ -50,7 +50,7 @@
 
 (variant trip-message [went [to place]])
 
-(define (trip-update [s (ptr trip-state)] [m (ptr trip-message)]) (match m [(went to) (set! (-> s at) to)]))
+(define (trip-update [s (ptr trip-state)] [m (ptr trip-message)]) (match m [(.went to) (set! (-> s at) to)]))
 
 (define (trip-init [s (ptr trip-state)] [at place]) (set! (-> s at) at))
 
@@ -59,11 +59,11 @@
   #:messages trip-message
   #:update trip-update
   #:init trip-init
-  #:route went
-  (nav (a ([href (route-href (user 7))] ["aria-current" (if (route-current? (user 7)) "page" "false")]) "User 7"))
+  #:route .went
+  (nav (a ([href (route-href (place .user 7))] ["aria-current" (if (route-current? (place .user 7)) "page" "false")]) "User 7"))
   (match (-> s at)
-    [home (title "Home") (p "home")]
-    [(user id) (title "User") (p "user " (int (cast i64 id)))]
+    [.home (title "Home") (p "home")]
+    [(.user id) (title "User") (p "user " (int (cast i64 id)))]
     [_ (p "elsewhere")]))
 
 (define the-model model)

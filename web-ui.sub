@@ -25,14 +25,14 @@
         (host-trap (buffer-string (& b)))))
     (set! rendered (string-prefix? (dom-read-text n "firstChild.data") "["))
     (when rendered
-      (let ([s (dom-call-node dom-document "querySelector" (dom-values (dom-text "style[data-ui]")))])
+      (let ([s (dom-call-node dom-document "querySelector" (dom-values (.dom-text "style[data-ui]")))])
         (unless (== (dom-read-number s "nodeType") 0.0) (dom-call-now! s "remove" (dom-values)))
         (dom-forget-node! s)))
     (dom-claiming! rendered)
     n))
 
 (define (page-title) -> string
-  (let* ([t (dom-call-node dom-document "querySelector" (dom-values (dom-text "title[data-ui]")))]
+  (let* ([t (dom-call-node dom-document "querySelector" (dom-values (.dom-text "title[data-ui]")))]
          [given (if (== (dom-read-number t "nodeType") 0.0) (dom-read-text dom-document "title") (dom-read-text t "dataset.ui"))])
     (dom-forget-node! t)
     given))

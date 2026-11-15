@@ -880,9 +880,10 @@
 
   ;; A variant's case named c, as type-info gives it: (case (field . type) ...), or 0.
   (define (variant-case [t datum] [c datum]) -> datum
-    (let ([cases (caddr (type-info t))] [found datum 0])
+    (let ([cases (caddr (type-info t))] [found datum 0]
+          [name (let ([u (undotted (syntax-e c))]) (if (== u 0) (syntax-e c) u))])
       (while (pair? cases)
-        (when (== (syntax-e (car (car cases))) (syntax-e c)) (set! found (car cases)))
+        (when (== (syntax-e (car (car cases))) name) (set! found (car cases)))
         (set! cases (cdr cases)))
       found))
 
@@ -1722,24 +1723,24 @@
 
   (define (component-kind [c datum]) -> datum (view-kind (view-of (cadr (cddddr c)))))
 
-  (define (constructed-type [who datum] [e datum]) -> datum
-    (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
-           [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
-      (syntax-match v
-        [('#%form _ ('#%substrate-construct t _ _)) t]
-        [_ (raise-syntax-error who "expected a case of a variant: (case value ...), or case alone" e)])))
-
   (define (emit-form [s datum]) -> datum
     (syntax-match s
-      [(_ e) (let ([t (constructed-type 'emit! e)])
-               #`(let ([event #,t #,e]) (ui-emit #,(type-text t) (cast (ptr void) (& event)))))]
-      [_ (raise-syntax-error 'emit! "expected (emit! (event value ...))" s)]))
+      [(_ e) #`(let ([event #,e]) (ui-raise emit! ui-emit event #,e))]
+      [_ (raise-syntax-error 'emit! "expected (emit! event)" s)]))
 
   (define (send-form [s datum]) -> datum
     (syntax-match s
-      [(_ e) (let ([t (constructed-type 'send! e)])
-               #`(let ([message #,t #,e]) (ui-send #,(type-text t) (cast (ptr void) (& message)))))]
-      [_ (raise-syntax-error 'send! "expected (send! (message value ...))" s)]))
+      [(_ e) #`(let ([message #,e]) (ui-raise send! ui-send message #,e))]
+      [_ (raise-syntax-error 'send! "expected (send! message)" s)]))
+
+  ;; (ui-raise who f x e) gives f the name of x's variant type and x's address. x holds e's value.
+  (define (raise-form [s datum]) -> datum
+    (syntax-match s
+      [(_ who f x e)
+       (let ([t (variable-type x)])
+         (unless (and (identifier? t) (let ([info (type-info t)]) (and (pair? info) (== (car info) 'variant))))
+           (raise-syntax-error (syntax-e who) "expected a value of a variant type, as in (T .case value ...)" e))
+         #`(#,f #,(type-text t) (cast (ptr void) (& #,x))))]))
 
   ;; (ui-root mount node (c ([parameter value] ...))) defines mount. mount puts an instance of c in the node and makes
   ;; it a root, and each drawing updates the roots. A root can also be a view, (v e ...), when it has no listeners.
@@ -1821,6 +1822,7 @@
 (define-syntax component component-form)
 (define-syntax emit! emit-form)
 (define-syntax send! send-form)
+(define-syntax ui-raise raise-form)
 (define-syntax ui-root root-form)
 (define-syntax ui-svg-attr! svg-attr-form)
 (define-syntax ui-svg-typed! svg-typed-form)

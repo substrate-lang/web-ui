@@ -11,9 +11,9 @@
 (view (screen [m (ptr model)])
   (canvas ([width 64] [height 36]
            [pointer-lock (-> m lock)]
-           [on mousedown (clicked (event button) (event x))]
-           [on-window mousemove (moved (event movement-x) (event movement-y))]
-           [on-window pointerlockchange (lock-changed (event locked))])))
+           [on mousedown (.clicked (event button) (event x))]
+           [on-window mousemove (.moved (event movement-x) (event movement-y))]
+           [on-window pointerlockchange (.lock-changed (event locked))])))
 
 (define the-model model)
 (define a-screen screen.state)
@@ -27,9 +27,9 @@
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
-    [(clicked button x) (printf "  clicked: button ~a at x ~a\n" button x)]
-    [(moved dx dy) (printf "  moved: ~a ~a\n" dx dy)]
-    [(lock-changed locked) (printf "  the lock changed: locked ~a\n" (if locked 1 0))]))
+    [(.clicked button x) (printf "  clicked: button ~a at x ~a\n" button x)]
+    [(.moved dx dy) (printf "  moved: ~a ~a\n" dx dy)]
+    [(.lock-changed locked) (printf "  the lock changed: locked ~a\n" (if locked 1 0))]))
 
 (define (main)
   (ui-read-with! read-text read-number node-is)

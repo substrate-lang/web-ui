@@ -8,7 +8,7 @@
 (messages msg)
 
 (view (field [m (ptr model)])
-  (input ([type "text"] [on input (typed (event value))])))
+  (input ([type "text"] [on input (.typed (event value))])))
 
 (define the-model model)
 (define a-field field.state)
@@ -22,5 +22,5 @@
   (trace-patches!)
   (ui-read-with! read-text read-number node-is)
   (match (cast (ptr msg) (ui-heard (trace-listener 0)))
-    [(typed text) (printf "typed ~a\n" text)]))
+    [(.typed text) (printf "typed ~a\n" text)]))
 

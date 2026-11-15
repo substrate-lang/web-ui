@@ -11,12 +11,12 @@
 
 (view (form [m (ptr model)])
   (input ([type "text"] [required] [maxlength 40] [size "8"] [disabled (-> m busy)] [tabindex (-> m wide)]
-          [on input (typed (event value))]
-          [on keydown (key (-> m id) (event key) (event shift) (event meta))]))
-  (input ([type "checkbox"] [checked (not (-> m busy))] [on change (checked (event checked))]))
+          [on input (.typed (event value))]
+          [on keydown (.key (-> m id) (event key) (event shift) (event meta))]))
+  (input ([type "checkbox"] [checked (not (-> m busy))] [on change (.checked (event checked))]))
   (table (tr (td ([colspan (+ (-> m wide) 1)] [data-note (-> m note)] ["x-own" "kept"]) "cell")))
-  (my-element ([anything "at all"] [on "my-event" plain]) "own")
-  (div ([on wheel (turned (event-number "deltaY") (event-text "type"))])))
+  (my-element ([anything "at all"] [on "my-event" .plain]) "own")
+  (div ([on wheel (.turned (event-number "deltaY") (event-text "type"))])))
 
 (define the-model model)
 (define a-form form.state)
@@ -34,12 +34,12 @@
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
-    [(typed text) (printf "typed ~a" text)]
-    [(key id name shift meta)
+    [(.typed text) (printf "typed ~a" text)]
+    [(.key id name shift meta)
      (printf "key ~a ~a~a~a" id name (if shift " shift" "") (if meta " meta" ""))]
-    [(checked on) (printf "~a" (if on "checked" "not checked"))]
-    [plain (printf "plain")]
-    [(turned dy mode) (printf "turned ~a by ~a" mode (cast i32 dy))])
+    [(.checked on) (printf "~a" (if on "checked" "not checked"))]
+    [.plain (printf "plain")]
+    [(.turned dy mode) (printf "turned ~a by ~a" mode (cast i32 dy))])
   (printf "\n"))
 
 (define (main)

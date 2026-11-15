@@ -13,9 +13,9 @@
 
 (define (changed [s (ptr drawing-state)] [m (ptr drawing-message)])
   (match m
-    [moved (+= (-> s x) 50.5) (set! (-> s label) "moved")]
-    [toggled (set! (-> s shown) (not (-> s shown)))]
-    [added
+    [.moved (+= (-> s x) 50.5) (set! (-> s label) "moved")]
+    [.toggled (set! (-> s shown) (not (-> s shown)))]
+    [.added
      (when (< (-> s count) 4)
        (set! (@ (+ (-> s dots) (-> s count))) (dot #:id (-> s count) #:x (+ 20.0 (* 25.0 (cast f64 (-> s count))))))
        (+= (-> s count) 1))]))
@@ -32,9 +32,9 @@
   #:update changed
   #:init started
   (div
-    (button ([on click moved]) "Move")
-    (button ([on click toggled]) "Toggle")
-    (button ([on click added]) "Add")
+    (button ([on click .moved]) "Move")
+    (button ([on click .toggled]) "Toggle")
+    (button ([on click .added]) "Add")
     (badge)
     (svg ([width 300] [height 120] [viewBox "0 0 300 120"])
       (circle ([id "dot"] [cx (-> s x)] [cy 20] [r 10]))

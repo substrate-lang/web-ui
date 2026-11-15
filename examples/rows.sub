@@ -44,25 +44,25 @@
 
 (define (update [m (ptr model)] [e (ptr message)])
   (match e
-    [create (clear! m) (add-rows! m 1000)]
-    [create-many (clear! m) (add-rows! m 10000)]
-    [append (add-rows! m 1000)]
-    [update-some
+    [.create (clear! m) (add-rows! m 1000)]
+    [.create-many (clear! m) (add-rows! m 10000)]
+    [.append (add-rows! m 1000)]
+    [.update-some
      (for ([i u32 0]) (< i (vector-count (& (-> m rows)))) (+= i 10)
        (let* ([r (vector-at-unchecked (& (-> m rows)) i)] [n (-> r label length)] [p (-> (new 0 u8 (+ n 4)) items)])
          (memcpy p (-> r label bytes) n)
          (memcpy (+ p n) " !!!" 4)
          (free (-> r label bytes))
          (set! (-> r label) (cast string (slice p (+ n 4))))))]
-    [swap
+    [.swap
      (when (> (vector-count (& (-> m rows))) 3)
        (let ([a (vector-at (& (-> m rows)) 1)] [b (vector-at (& (-> m rows)) (- (vector-count (& (-> m rows))) 2))] [t row])
          (set! t (@ a))
          (set! (@ a) (@ b))
          (set! (@ b) t)))]
-    [clear (clear! m)]
-    [(select id) (set! (-> m selected) id)]
-    [(remove id)
+    [.clear (clear! m)]
+    [(.select id) (set! (-> m selected) id)]
+    [(.remove id)
      (vector-each ([r i (& (-> m rows))])
        (when (== (-> r id) id)
          (free (-> r label bytes))
@@ -72,8 +72,8 @@
 (view (row-view [r (ptr row)] [m (ptr model)])
   (tr ([class (if (== (-> r id) (-> m selected)) "selected" "")])
     (td ([class "id"]) (int (-> r id)))
-    (td (a ([on click (select (-> r id))]) (text (-> r label))))
-    (td (a ([class "remove"] [on click (remove (-> r id))]) "remove"))))
+    (td (a ([on click (.select (-> r id))]) (text (-> r label))))
+    (td (a ([class "remove"] [on click (.remove (-> r id))]) "remove"))))
 
 (component (rows)
   #:state [m model]
@@ -81,12 +81,12 @@
   #:update update
   #:init init
   (nav
-    (button ([id "create"] [on click create]) "create 1,000 rows")
-    (button ([id "create-many"] [on click create-many]) "create 10,000 rows")
-    (button ([id "append"] [on click append]) "append 1,000 rows")
-    (button ([id "update"] [on click update-some]) "update every 10th row")
-    (button ([id "swap"] [on click swap]) "swap rows")
-    (button ([id "clear"] [on click clear]) "clear"))
+    (button ([id "create"] [on click .create]) "create 1,000 rows")
+    (button ([id "create-many"] [on click .create-many]) "create 10,000 rows")
+    (button ([id "append"] [on click .append]) "append 1,000 rows")
+    (button ([id "update"] [on click .update-some]) "update every 10th row")
+    (button ([id "swap"] [on click .swap]) "swap rows")
+    (button ([id "clear"] [on click .clear]) "clear"))
   (table (tbody (each [r (-> m rows items) (-> m rows count)] #:key (-> r id) (row-view r m)))))
 
 (attach ["root" (rows)])

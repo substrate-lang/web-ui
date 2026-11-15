@@ -14,13 +14,13 @@
 (struct tally-state [count i32])
 (variant tally-message [bump])
 
-(define (tally-update [s (ptr tally-state)] [m (ptr tally-message)]) (match m [bump (+= (-> s count) 1)]))
+(define (tally-update [s (ptr tally-state)] [m (ptr tally-message)]) (match m [.bump (+= (-> s count) 1)]))
 
 (component (tally [label string])
   #:state [s tally-state]
   #:messages tally-message
   #:update tally-update
-  (p (text label) " " (int (-> s count)) (button ([on click bump]) "+")))
+  (p (text label) " " (int (-> s count)) (button ([on click .bump]) "+")))
 
 (struct sized-state [length i64] [times i32])
 
@@ -39,9 +39,9 @@
 
 (define (holder-update [s (ptr holder-state)] [m (ptr holder-message)])
   (match m
-    [next-user (+= (-> s user) 1)]
-    [rename (set! (-> s name) "Grace")]
-    [tick (+= (-> s ticks) 1)]))
+    [.next-user (+= (-> s user) 1)]
+    [.rename (set! (-> s name) "Grace")]
+    [.tick (+= (-> s ticks) 1)]))
 
 (define (holder-init [s (ptr holder-state)])
   (set! (-> s user) 1)
@@ -54,9 +54,9 @@
   #:init holder-init
   (tally ([label "user"]) #:key (-> s user))
   (sized ([name (-> s name)]))
-  (button ([on click next-user]) "next user")
-  (button ([on click rename]) "rename")
-  (button ([on click tick]) "tick")
+  (button ([on click .next-user]) "next user")
+  (button ([on click .rename]) "rename")
+  (button ([on click .tick]) "tick")
   (int (-> s ticks)))
 
 (ui-root mount-holder 0 (holder))
