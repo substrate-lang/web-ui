@@ -383,7 +383,7 @@
 ;; The directory of the document's base URL, without its final slash.
 (define (router-base) -> string base)
 
-;; (route-href route) writes a route's target, and (route-current? route) tells whether the document is at it.
+;; (route-href route) writes a route's target. (route-current? route) tells whether the document is at that route.
 (begin-for-syntax
   (require-unqualified compiler/macros)
   (require-unqualified std/meta/type-info)
@@ -393,7 +393,6 @@
       [(_ e) #`(let ([value #,e]) (route-written value #,e))]
       [_ (raise-syntax-error 'route-href "expected (route-href route)" s)]))
 
-  ;; (route-written x e) writes the target of x, which holds e's value.
   (define (route-written-form [s datum]) -> datum
     (syntax-match s
       [(_ x e)

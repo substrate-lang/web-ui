@@ -878,7 +878,7 @@
 
   (define (type-name [t datum]) -> datum (syntax-e t))
 
-  ;; The case of the variant t that c names, as in .changed, as type-info gives it: (case (field . type) ...), or 0.
+  ;; A variant's case named c, as type-info gives it: (case (field . type) ...), or 0.
   (define (variant-case [t datum] [c datum]) -> datum
     (let ([cases (caddr (type-info t))] [found datum 0] [name (undotted (syntax-e c))])
       (while (pair? cases)
@@ -1732,7 +1732,6 @@
       [(_ e) #`(let ([message #,e]) (ui-raise send! ui-send message #,e))]
       [_ (raise-syntax-error 'send! "expected (send! message)" s)]))
 
-  ;; (ui-raise who f x e) gives f the name of x's variant type and x's address. x holds e's value.
   (define (raise-form [s datum]) -> datum
     (syntax-match s
       [(_ who f x e)
