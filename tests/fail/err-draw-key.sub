@@ -1,4 +1,4 @@
-;; The key of [draw key code] must be an integer; this one is a string.
+;; The key of [draw key code] must be an integer, but this one is a string.
 (require-unqualified web-ui/ui)
 
 (struct model [count i32])

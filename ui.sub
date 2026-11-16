@@ -458,8 +458,8 @@
 
 (define (ui-form-listen! [node u32]) (navigation-listen! node "submit"))
 
-;; The document's title: the last view with (title e) that a drawing reaches gives it, and else the title the document
-;; started with.
+;; The document's title. The last view with (title e) that a drawing reaches gives it. Otherwise it is the title that
+;; the document started with.
 (define title-given string "")
 (define titled bool #f)
 (define title-used bool #f)
