@@ -13,6 +13,6 @@
   #:state [s page-state]
   #:messages page-message
   #:update page-update
-  #:leaving [held? stopped]
+  #:leaving [held? .stopped]
   (p "page"))
 (define (main) 0)

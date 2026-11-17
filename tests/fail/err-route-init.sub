@@ -12,6 +12,6 @@
   #:state [s page-state]
   #:messages page-message
   #:update page-update
-  #:route went
+  #:route .went
   (p "page"))
 (define (main) 0)

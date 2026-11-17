@@ -4,7 +4,7 @@
 (variant row-message [picked])
 (messages row-message)
 
-(view (row) (li ([on click picked]) "row"))
+(view (row) (li ([on click .picked]) "row"))
 
 (ui-root mount-row 0 (row))
 (define (main) 0)

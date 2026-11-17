@@ -7,5 +7,5 @@
 (define (paint [m (ptr model)]) 0)
 
 (view (page [m (ptr model)])
-  (canvas ([on-window keydwn pressed])))
+  (canvas ([on-window keydwn .pressed])))
 (define (main) 0)

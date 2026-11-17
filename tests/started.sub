@@ -26,7 +26,7 @@
   #:messages page-message
   #:update page-update
   (div (greeting ([name "first"]))
-       (button ([on click shown]) "Show")
+       (button ([on click .shown]) "Show")
        (when (-> s more) (greeting ([name "second"])))))
 
 (attach ["root" (page)])

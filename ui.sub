@@ -458,8 +458,8 @@
 
 (define (ui-form-listen! [node u32]) (navigation-listen! node "submit"))
 
-;; The document's title: the last view with (title e) that a drawing reaches gives it, and else the title the document
-;; started with.
+;; The document's title. The last view with (title e) that a drawing reaches gives it. Otherwise it is the title that
+;; the document started with.
 (define title-given string "")
 (define titled bool #f)
 (define title-used bool #f)
@@ -880,14 +880,14 @@
 
   ;; A variant's case named c, as type-info gives it: (case (field . type) ...), or 0.
   (define (variant-case [t datum] [c datum]) -> datum
-    (let ([cases (caddr (type-info t))] [found datum 0])
+    (let ([cases (caddr (type-info t))] [found datum 0] [name (undotted (syntax-e c))])
       (while (pair? cases)
-        (when (== (syntax-e (car (car cases))) (syntax-e c)) (set! found (car cases)))
+        (when (== (syntax-e (car (car cases))) name) (set! found (car cases)))
         (set! cases (cdr cases)))
       found))
 
   (define (case-names [t datum]) -> datum
-    (for/list ([c (caddr (type-info t))]) (syntax-e (car c))))
+    (for/list ([c (caddr (type-info t))]) (syntax-e (dotted (car c)))))
 
   (define (single-case? [t datum]) -> bool (== (length (caddr (type-info t))) 1))
 
@@ -1370,19 +1370,19 @@
         (set! attributes (cdr attributes)))
       found))
 
-  ;; (c ([parameter value] ... [on event message] ...))
+  ;; (c ([parameter value] ... [on .event .message] ...))
   (define (component-attributes [f datum] [l datum] [c datum]) -> datum
     (let ([params (syntax->list (caddr c))] [given nil] [listeners nil]
           [attributes (cond [(null? (cdr l)) nil]
                             [(and (null? (cddr l)) (!= (syntax->list (cadr l)) 0)) (syntax->list (cadr l))]
-                            [else (fail f '"expected (component ([parameter value] ... [on event message] ...))")])])
+                            [else (fail f '"expected (component ([parameter value] ... [on .event .message] ...))")])])
       (for-each (lambda ([a datum])
                   (let ([al (syntax->list a)])
                     (unless (and (!= al 0) (pair? al) (identifier? (car al)))
-                      (fail a '"expected [parameter value] or [on event message]"))
+                      (fail a '"expected [parameter value] or [on .event .message]"))
                     (cond [(== (syntax-e (car al)) 'on)
                            (unless (and (== (length al) 3) (identifier? (cadr al)) (identifier? (caddr al)))
-                             (fail a '"expected [on event message], with the names of a case of the component's events and a case of this view's messages"))
+                             (fail a '"expected [on .event .message], with a case of the component's events and a case of this view's messages"))
                            (set! listeners (cons al listeners))]
                           [(!= (attribute-named given (syntax-e (car al))) 0)
                            (fail (car al) (format "the parameter ~a is given twice" `(,(syntax-e (car al)))))]
@@ -1415,8 +1415,8 @@
             (fail message (format "the message ~a takes ~a, but the event ~a carries ~a"
                                   `(,(syntax-e message) ,taken ,(syntax-e event) ,carried)))))
         (let* ([vars (for/list ([x (cdr event-case)]) (literal (string->symbol (format-message "v~a" `(,(syntax-e (car x)))))))]
-               [pattern (if (null? vars) (car event-case) #`(#,(car event-case) #,@vars))]
-               [made (if (null? (cdr message-case)) (car message-case) #`(#,(car message-case) #,@vars))])
+               [pattern (case-code (car event-case) vars)]
+               [made (case-code (car message-case) (if (null? (cdr message-case)) nil vars))])
           (set! fills
                 (cons #`(define (#,fn [parent (ptr void)] [e (ptr void)])
                           (match (cast (ptr #,events) e)
@@ -1563,8 +1563,8 @@
       (cdr (cadr found))))
 
   ;; (component (c parameter ...) option ... child ...), with the options #:state [s TYPE], #:messages TYPE, #:update f,
-  ;; #:init f, #:start f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route case and
-  ;; #:leaving [held? case]. Its instances each have a state, which the children see as s. #:init runs when an instance
+  ;; #:init f, #:start f, #:changed f, #:free f, #:events TYPE, #:trapped f, #:style css, #:route .case and
+  ;; #:leaving [held? .case]. Its instances each have a state, which the children see as s. #:init runs when an instance
   ;; is mounted, and when it is rendered. #:start runs only in the browser, after the instance's first drawing reaches
   ;; the document. #:changed runs before a drawing whose parameters differ, bit for bit, from those of the drawing
   ;; before. All three take the state and the parameters. #:free runs when an instance is unmounted, and after it is
@@ -1722,24 +1722,23 @@
 
   (define (component-kind [c datum]) -> datum (view-kind (view-of (cadr (cddddr c)))))
 
-  (define (constructed-type [who datum] [e datum]) -> datum
-    (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
-           [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
-      (syntax-match v
-        [('#%form _ ('#%substrate-construct t _ _)) t]
-        [_ (raise-syntax-error who "expected a case of a variant: (case value ...), or case alone" e)])))
-
   (define (emit-form [s datum]) -> datum
     (syntax-match s
-      [(_ e) (let ([t (constructed-type 'emit! e)])
-               #`(let ([event #,t #,e]) (ui-emit #,(type-text t) (cast (ptr void) (& event)))))]
-      [_ (raise-syntax-error 'emit! "expected (emit! (event value ...))" s)]))
+      [(_ e) #`(let ([event #,e]) (ui-raise emit! ui-emit event #,e))]
+      [_ (raise-syntax-error 'emit! "expected (emit! event)" s)]))
 
   (define (send-form [s datum]) -> datum
     (syntax-match s
-      [(_ e) (let ([t (constructed-type 'send! e)])
-               #`(let ([message #,t #,e]) (ui-send #,(type-text t) (cast (ptr void) (& message)))))]
-      [_ (raise-syntax-error 'send! "expected (send! (message value ...))" s)]))
+      [(_ e) #`(let ([message #,e]) (ui-raise send! ui-send message #,e))]
+      [_ (raise-syntax-error 'send! "expected (send! message)" s)]))
+
+  (define (raise-form [s datum]) -> datum
+    (syntax-match s
+      [(_ who f x e)
+       (let ([t (variable-type x)])
+         (unless (and (identifier? t) (let ([info (type-info t)]) (and (pair? info) (== (car info) 'variant))))
+           (raise-syntax-error (syntax-e who) "expected a value of a variant type, as in (T .case value ...)" e))
+         #`(#,f #,(type-text t) (cast (ptr void) (& #,x))))]))
 
   ;; (ui-root mount node (c ([parameter value] ...))) defines mount. mount puts an instance of c in the node and makes
   ;; it a root, and each drawing updates the roots. A root can also be a view, (v e ...), when it has no listeners.
@@ -1821,6 +1820,7 @@
 (define-syntax component component-form)
 (define-syntax emit! emit-form)
 (define-syntax send! send-form)
+(define-syntax ui-raise raise-form)
 (define-syntax ui-root root-form)
 (define-syntax ui-svg-attr! svg-attr-form)
 (define-syntax ui-svg-typed! svg-typed-form)

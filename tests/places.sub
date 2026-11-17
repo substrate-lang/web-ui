@@ -2,7 +2,7 @@
 (require-unqualified std/http/form)
 (require-unqualified std/http/routable)
 
-(provide place home user draft long search lost place.url-read place.url-write! place.url-check)
+(provide place place.url-read place.url-write! place.url-check)
 
 (struct search-query [q string])
 
@@ -14,4 +14,4 @@
   [draft ("draft" "")]
   [long ("long" "")]
   [search ("search" "") (query search-query)]
-  [#:moved ("index.html") home])
+  [#:moved ("index.html") .home])

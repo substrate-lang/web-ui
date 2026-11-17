@@ -11,14 +11,14 @@
 (view (counter [m (ptr model)])
   (div ([class "counter"])
     (h1 (text (-> m title)))
-    (button ([on click decrement] [disabled (== (-> m count) 0)]) "-")
+    (button ([on click .decrement] [disabled (== (-> m count) 0)]) "-")
     (span ([class (if (< (-> m count) 0) "neg" "pos")]) "count: " (int (-> m count)) "!")
-    (button ([on click increment]) "+")
+    (button ([on click .increment]) "+")
     (br)
     (input ([type "text"] [value (-> m title)] [focus (-> m count)]))))
 
 (view (row [x (ptr item)])
-  (li ([class (if (-> x done) "done" "")] [on click (toggle (-> x id))])
+  (li ([class (if (-> x done) "done" "")] [on click (.toggle (-> x id))])
     (text (-> x name))
     (if (-> x done) (b "done") (i "to do"))))
 

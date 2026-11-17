@@ -7,5 +7,5 @@
 (messages msg)
 
 (view (page [m (ptr model)])
-  (input ([on input (typed (event shift))])))
+  (input ([on input (.typed (event shift))])))
 (define (main) 0)

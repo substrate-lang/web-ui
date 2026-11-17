@@ -4,7 +4,7 @@
 (variant row-message [picked])
 (messages row-message)
 
-(view (row) (li ([on click picked]) "row"))
+(view (row) (li ([on click .picked]) "row"))
 
 (struct list-state [n i32])
 (variant list-message [cleared])

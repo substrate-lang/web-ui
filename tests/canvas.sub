@@ -44,9 +44,9 @@
   (when (-> m show)
     (canvas ([width 320] [height 240]
              [draw (-> m frame) (paint m)]
-             [on click (pointed (event x) (event y))]
-             [on-window keydown (pressed (event key))]
-             [on-window frame (tick (event time))]))))
+             [on click (.pointed (event x) (event y))]
+             [on-window keydown (.pressed (event key))]
+             [on-window frame (.tick (event time))]))))
 
 (define the-model model)
 (define a-board board.state)
@@ -61,10 +61,10 @@
 
 (define (hear [n u32])
   (match (cast (ptr msg) (ui-heard (trace-listener n)))
-    [(tick time) (printf "tick at ~a ms" (cast u64 time))]
-    [(pointed x y)
+    [(.tick time) (printf "tick at ~a ms" (cast u64 time))]
+    [(.pointed x y)
      (printf "pointed at ~a, ~a" x y)]
-    [(pressed key) (printf "pressed ~a" key)])
+    [(.pressed key) (printf "pressed ~a" key)])
   (printf "\n"))
 
 (define (step [what string])

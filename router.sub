@@ -176,9 +176,9 @@
 (define (settle!)
   (set! due #f)
   (when moved
-    (dom-call-with! dom-document "body.setAttribute" (slice (array-of dom-value (dom-text "tabindex") (dom-text "-1"))))
+    (dom-call-with! dom-document "body.setAttribute" (slice (array-of dom-value (.text "tabindex") (.text "-1"))))
     (dom-call! dom-document "body.focus")
-    (dom-call-with! dom-document "body.removeAttribute" (slice (array-of dom-value (dom-text "tabindex"))))
+    (dom-call-with! dom-document "body.removeAttribute" (slice (array-of dom-value (.text "tabindex"))))
     (dom-set-text! announcer (dom-read-text dom-document "title")))
   (case scrolling
     [(1) (scroll-fragment!)]
@@ -199,21 +199,21 @@
 (define (has-word? [s string] [word string]) -> bool
   (let ([start u32 0])
     (for ([i u32 0]) (<= i (-> s length)) (+= i 1)
-      (when (or (== i (-> s length)) (== (@ s i) #\space) (== (@ s i) #\tab) (== (@ s i) #\newline) (== (@ s i) 12)
+      (when (or (== i (-> s length)) (== (@ s i) #\space) (== (@ s i) #\tab) (== (@ s i) #\newline) (== (@ s i) #\page)
                 (== (@ s i) #\return))
         (when (== (slice s start i) word) (return #t))
         (set! start (+ i 1))))
     #f))
 
 (define (has-attribute? [node u32] [method string] [name string]) -> bool
-  (!= (dom-call-number node method (dom-values (dom-text name))) 0.0))
+  (!= (dom-call-number node method (dom-values (.text name))) 0.0))
 
 (define (prevent!) (dom-call-now! dom-event "preventDefault" (dom-values)))
 
 (define svg-namespace string "http://www.w3.org/2000/svg")
 
 (define (attribute-text [name string]) -> string
-  (dom-call-text dom-event "currentTarget.getAttribute" (dom-values (dom-text name))))
+  (dom-call-text dom-event "currentTarget.getAttribute" (dom-values (.text name))))
 
 (define (link-url [a (ptr arena)] [svg bool]) -> string
   (if svg
@@ -383,36 +383,35 @@
 ;; The directory of the document's base URL, without its final slash.
 (define (router-base) -> string base)
 
-;; (route-href (case value ...)) writes a route's target, and (route-current? (case value ...)) tells whether the
-;; document is at it. case alone stands for a case without values.
+;; (route-href route) writes a route's target. (route-current? route) tells whether the document is at that route.
 (begin-for-syntax
   (require-unqualified compiler/macros)
-
-  (define (constructed-type [who datum] [e datum]) -> datum
-    (let* ([l (syntax->list e)] [head (if (and (!= l 0) (pair? l)) (car l) e)]
-           [v (if (and (identifier? head) (== (identifier-binding-kind head) 'macro)) (syntax-local-value head) 0)])
-      (syntax-match v
-        [('#%form _ ('#%substrate-construct t _ _)) t]
-        [_ (raise-syntax-error who "expected a case of a routable type: (case value ...), or case alone" e)])))
+  (require-unqualified std/meta/type-info)
 
   (define (route-href-form [s datum]) -> datum
     (syntax-match s
-      [(_ e)
-       (let* ([t (constructed-type 'route-href e)]
-              [write (datum->syntax t (string->symbol (format-message "~a.url-write!" `(,(syntax-e t)))) t)])
-         (unless (== (identifier-binding-kind write) 'function)
-           (raise-syntax-error 'route-href (format-message "~a is not a routable type" `(,(syntax-e t))) e))
-         #`(let ([value #,t #,e] [b (make-buffer)])
+      [(_ e) #`(let ([value #,e]) (route-written value #,e))]
+      [_ (raise-syntax-error 'route-href "expected (route-href route)" s)]))
+
+  (define (route-written-form [s datum]) -> datum
+    (syntax-match s
+      [(_ x e)
+       (let* ([t (variable-type x)]
+              [write (if (identifier? t)
+                         (datum->syntax t (string->symbol (format-message "~a.url-write!" `(,(syntax-e t)))) t)
+                         0)])
+         (unless (and (!= write 0) (== (identifier-binding-kind write) 'function))
+           (raise-syntax-error 'route-href (format-message "~s is not a routable type" `(,(type-datum t))) e))
+         #`(let ([b (make-buffer)])
              (buffer-add-string! (& b) (router-base))
-             (#,write (& b) (& value))
-             (router-text (& b))))]
-      [_ (raise-syntax-error 'route-href "expected (route-href (case value ...)), or (route-href case)" s)]))
+             (#,write (& b) (& #,x))
+             (router-text (& b))))]))
 
   (define (route-current-form [s datum]) -> datum
     (syntax-match s
       [(_ e) #`(router-current? (route-href #,e))]
-      [_ (raise-syntax-error 'route-current? "expected (route-current? (case value ...)), or (route-current? case)"
-                             s)])))
+      [_ (raise-syntax-error 'route-current? "expected (route-current? route)" s)])))
 
 (define-syntax route-href route-href-form)
+(define-syntax route-written route-written-form)
 (define-syntax route-current? route-current-form)
